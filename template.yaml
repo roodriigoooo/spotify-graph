@@ -1,0 +1,1023 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Spotify Shared Queue Platform - Serverless Architecture
+
+Parameters:
+  SpotifyClientId:
+    Type: String
+    Description: Spotify API Client ID
+    NoEcho: false
+  
+  SpotifyClientSecret:
+    Type: String
+    Description: Spotify API Client Secret
+    NoEcho: true
+  
+  JWTSecret:
+    Type: String
+    Description: Secret key for JWT token signing
+    NoEcho: true
+  
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Timeout: 30
+    MemorySize: 256
+    Environment:
+      Variables:
+        USERS_TABLE: !Ref UsersTable
+        FRIENDS_TABLE: !Ref FriendsTable
+        FRIEND_REQUESTS_TABLE: !Ref FriendRequestsTable
+        PRESENCE_TABLE: !Ref PresenceTable
+        CONNECTIONS_TABLE: !Ref ConnectionsTable
+        SHARED_QUEUES_TABLE: !Ref SharedQueuesTable
+        QUEUE_MEMBERS_TABLE: !Ref QueueMembersTable
+        PRESENCE_POLL_QUEUE_URL: !Ref PresencePollQueue
+        PRESENCE_DLQ_URL: !Ref PresencePollDLQ
+        WEBSOCKET_API_ENDPOINT: !Sub 'https://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'
+        SPOTIFY_CLIENT_ID: !Ref SpotifyClientId
+        SPOTIFY_CLIENT_SECRET: !Ref SpotifyClientSecret
+        JWT_SECRET: !Ref JWTSecret
+        FRONTEND_CALLBACK_URL: !Sub 'https://${FrontendDistribution.DomainName}'
+
+Resources:
+  # ============================================
+  # DynamoDB Tables
+  # ============================================
+  
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SpotifyQueue-Users
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: spotifyId
+          AttributeType: S
+        - AttributeName: visibility
+          AttributeType: S
+        - AttributeName: lastLogin
+          AttributeType: N
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: SpotifyIdIndex
+          KeySchema:
+            - AttributeName: spotifyId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: RecentActivityIndex
+          KeySchema:
+            - AttributeName: visibility
+              KeyType: HASH
+            - AttributeName: lastLogin
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  
+  FriendsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SpotifyQueue-Friends
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: friendId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: friendId
+          KeyType: RANGE
+  
+  FriendRequestsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SpotifyQueue-FriendRequests
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: requestId
+          AttributeType: S
+        - AttributeName: toUserId
+          AttributeType: S
+        - AttributeName: fromUserId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: requestId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: ToUserIndex
+          KeySchema:
+            - AttributeName: toUserId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+        - IndexName: FromUserIndex
+          KeySchema:
+            - AttributeName: fromUserId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+  
+  PresenceTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SpotifyQueue-Presence
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+  
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SpotifyQueue-Connections
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: connectionId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: connectionId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: UserIdIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+  
+  SharedQueuesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SpotifyQueue-SharedQueues
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: queueId
+          AttributeType: S
+        - AttributeName: ownerId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: queueId
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: OwnerIndex
+          KeySchema:
+            - AttributeName: ownerId
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+  
+  QueueMembersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SpotifyQueue-QueueMembers
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: queueId
+          AttributeType: S
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: queueId
+          KeyType: HASH
+        - AttributeName: userId
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: UserQueuesIndex
+          KeySchema:
+            - AttributeName: userId
+              KeyType: HASH
+            - AttributeName: queueId
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  # ============================================
+  # CloudFront Distribution for Frontend
+  # ============================================
+
+  FrontendDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: Spotify Shared Queue Frontend
+        DefaultRootObject: demo-interface.html
+        HttpVersion: http2
+        PriceClass: PriceClass_100
+        Origins:
+          - Id: S3StaticWebsite
+            DomainName: spotify-queue-demo-hosting.s3-website-us-east-1.amazonaws.com
+            CustomOriginConfig:
+              OriginProtocolPolicy: http-only
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginSSLProtocols:
+                - TLSv1.2
+        DefaultCacheBehavior:
+          TargetOriginId: S3StaticWebsite
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          ForwardedValues:
+            QueryString: true
+            Cookies:
+              Forward: none
+          Compress: true
+          MinTTL: 0
+          DefaultTTL: 60
+          MaxTTL: 300
+
+  # ============================================
+  # SQS Queues
+  # ============================================
+  
+  PresencePollQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: SpotifyQueue-PresencePoll
+      VisibilityTimeout: 120
+      MessageRetentionPeriod: 3600
+      ReceiveMessageWaitTimeSeconds: 20
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PresencePollDLQ.Arn
+        maxReceiveCount: 5
+  
+  PresencePollDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: SpotifyQueue-PresencePoll-DLQ
+      MessageRetentionPeriod: 1209600  # 14 days
+
+  # ============================================
+  # REST API Gateway
+  # ============================================
+  
+  RestApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: SpotifyQueue-RestApi
+      StageName: prod
+      Cors:
+        AllowOrigin: "'*'"
+        AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Auth-Token'"
+        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS'"
+        AllowCredentials: false
+      GatewayResponses:
+        DEFAULT_4XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Auth-Token'"
+        DEFAULT_5XX:
+          ResponseParameters:
+            Headers:
+              Access-Control-Allow-Origin: "'*'"
+              Access-Control-Allow-Headers: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Auth-Token'"
+      Auth:
+        DefaultAuthorizer: JWTAuthorizer
+        AddDefaultAuthorizerToCorsPreflight: false
+        Authorizers:
+          JWTAuthorizer:
+            FunctionArn: !GetAtt AuthorizerFunction.Arn
+            FunctionPayloadType: REQUEST
+            Identity:
+              Headers:
+                - X-Auth-Token
+            AuthorizerResultTtlInSeconds: 300
+
+  # ============================================
+  # WebSocket API Gateway
+  # ============================================
+  
+  WebSocketApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: SpotifyQueue-WebSocketApi
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+  
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketApi
+      StageName: prod
+      AutoDeploy: true
+  
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $connect
+      AuthorizationType: NONE
+      Target: !Sub 'integrations/${ConnectIntegration}'
+  
+  ConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsConnectFunction.Arn}/invocations'
+  
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      Target: !Sub 'integrations/${DisconnectIntegration}'
+  
+  DisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsDisconnectFunction.Arn}/invocations'
+  
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketApi
+      RouteKey: $default
+      AuthorizationType: NONE
+      Target: !Sub 'integrations/${DefaultIntegration}'
+  
+  DefaultIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${WsDefaultFunction.Arn}/invocations'
+
+  # ============================================
+  # EventBridge Scheduler
+  # ============================================
+  
+  PresencePollSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: SpotifyQueue-PresencePoll
+      Description: Triggers presence discovery every minute for fresher activity data
+      ScheduleExpression: rate(1 minute)
+      FlexibleTimeWindow:
+        Mode: 'OFF'
+      Target:
+        Arn: !GetAtt DiscoverActiveUsersFunction.Arn
+        RoleArn: !GetAtt SchedulerRole.Arn
+
+  # ============================================
+  # Lambda Functions - Authentication
+  # ============================================
+  
+  HealthCheckFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-HealthCheck
+      CodeUri: src/health/
+      Handler: health_check.handler
+      Events:
+        HealthCheck:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /health
+            Method: GET
+            Auth:
+              Authorizer: NONE
+
+  AuthorizerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-Authorizer
+      CodeUri: src/auth/
+      Handler: authorizer.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+
+  SpotifyAuthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-SpotifyAuth
+      CodeUri: src/auth/
+      Handler: spotify_auth.handler
+      Events:
+        AuthUrl:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /auth/spotify
+            Method: GET
+            Auth:
+              Authorizer: NONE
+        AuthCallback:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /auth/callback
+            Method: GET
+            Auth:
+              Authorizer: NONE
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+
+  # ============================================
+  # Lambda Functions - User Management
+  # ============================================
+  
+  GetMeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-GetMe
+      CodeUri: src/users/
+      Handler: get_me.handler
+      Events:
+        GetMe:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /me
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+
+  UpdateVisibilityFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-UpdateVisibility
+      CodeUri: src/users/
+      Handler: update_visibility.handler
+      Events:
+        UpdateVisibility:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /me/visibility
+            Method: PUT
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+
+  # ============================================
+  # Lambda Functions - Friend Management
+  # ============================================
+  
+  SendFriendRequestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-SendFriendRequest
+      CodeUri: src/friends/
+      Handler: send_request.handler
+      Events:
+        SendRequest:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /friends/request
+            Method: POST
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FriendRequestsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref FriendsTable
+
+  ListFriendRequestsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-ListFriendRequests
+      CodeUri: src/friends/
+      Handler: list_requests.handler
+      Events:
+        ListRequests:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /friends/requests
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FriendRequestsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+
+  AcceptFriendRequestFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-AcceptFriendRequest
+      CodeUri: src/friends/
+      Handler: accept_request.handler
+      Events:
+        AcceptRequest:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /friends/accept
+            Method: POST
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FriendsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FriendRequestsTable
+
+  DeleteFriendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-DeleteFriend
+      CodeUri: src/friends/
+      Handler: delete_friend.handler
+      Events:
+        DeleteFriend:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /friends/{friendId}
+            Method: DELETE
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FriendsTable
+
+  ListFriendsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-ListFriends
+      CodeUri: src/friends/
+      Handler: list_friends.handler
+      Events:
+        ListFriends:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /friends
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FriendsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+
+  # ============================================
+  # Lambda Functions - Presence Polling
+  # ============================================
+  
+  DiscoverActiveUsersFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-DiscoverActiveUsers
+      CodeUri: src/presence/
+      Handler: discover_active_users.handler
+      Timeout: 60
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+        - SQSSendMessagePolicy:
+            QueueName: !GetAtt PresencePollQueue.QueueName
+
+  FetchPresenceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-FetchPresence
+      CodeUri: src/presence/
+      Handler: fetch_presence.handler
+      Timeout: 10
+      ReservedConcurrentExecutions: 10
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: !GetAtt PresencePollQueue.Arn
+            BatchSize: 1
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PresenceTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+
+  GetPresenceNetworkFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-GetPresenceNetwork
+      CodeUri: src/presence/
+      Handler: get_network.handler
+      Events:
+        GetPresenceNetwork:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /presence/network
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FriendsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PresenceTable
+
+  # ============================================
+  # Lambda Functions - WebSocket
+  # ============================================
+  
+  WsConnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-WsConnect
+      CodeUri: src/websocket/
+      Handler: connect.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+
+  WsDisconnectFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-WsDisconnect
+      CodeUri: src/websocket/
+      Handler: disconnect.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+
+  WsDefaultFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-WsDefault
+      CodeUri: src/websocket/
+      Handler: default.handler
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref ConnectionsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SharedQueuesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref QueueMembersTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - 'execute-api:ManageConnections'
+              Resource:
+                - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
+
+  WsBroadcastFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-WsBroadcast
+      CodeUri: src/websocket/
+      Handler: broadcast.handler
+      Timeout: 60
+      Events:
+        PresenceStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt PresenceTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 10
+            MaximumBatchingWindowInSeconds: 1
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FriendsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ConnectionsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+        - Statement:
+            - Effect: Allow
+              Action:
+                - 'execute-api:ManageConnections'
+              Resource:
+                - !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
+
+  # ============================================
+  # Lambda Functions - Shared Queues
+  # ============================================
+  
+  CreateQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-CreateQueue
+      CodeUri: src/queues/
+      Handler: create_queue.handler
+      Events:
+        CreateQueue:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /queues
+            Method: POST
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SharedQueuesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QueueMembersTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+
+  ListQueuesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-ListQueues
+      CodeUri: src/queues/
+      Handler: list_queues.handler
+      Events:
+        ListQueues:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /queues
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref QueueMembersTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SharedQueuesTable
+
+  GetQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-GetQueue
+      CodeUri: src/queues/
+      Handler: get_queue.handler
+      Events:
+        GetQueue:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /queues/{queueId}
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref SharedQueuesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref QueueMembersTable
+
+  AddToQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-AddToQueue
+      CodeUri: src/queues/
+      Handler: add_to_queue.handler
+      Events:
+        AddToQueue:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /queues/{queueId}/tracks
+            Method: POST
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SharedQueuesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref QueueMembersTable
+
+  LeaveQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-LeaveQueue
+      CodeUri: src/queues/
+      Handler: leave_queue.handler
+      Events:
+        LeaveQueue:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /queues/{queueId}/leave
+            Method: POST
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref SharedQueuesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QueueMembersTable
+
+  JoinQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-JoinQueue
+      CodeUri: src/queues/
+      Handler: join_queue.handler
+      Events:
+        JoinQueue:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /queues/{queueId}/join
+            Method: POST
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref SharedQueuesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QueueMembersTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref FriendsTable
+
+  AutoDJFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-AutoDJ
+      CodeUri: src/queues/
+      Handler: auto_dj.handler
+      Events:
+        QueueStream:
+          Type: DynamoDB
+          Properties:
+            Stream: !GetAtt SharedQueuesTable.StreamArn
+            StartingPosition: LATEST
+            BatchSize: 1
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SharedQueuesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+
+  SearchTracksFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-SearchTracks
+      CodeUri: src/tracks/
+      Handler: search.handler
+      Events:
+        SearchTracks:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /tracks/search
+            Method: GET
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref UsersTable
+
+  LeaveQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-LeaveQueue
+      CodeUri: src/queues/
+      Handler: leave_queue.handler
+      Events:
+        LeaveQueue:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /queues/{queueId}/leave
+            Method: POST
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QueueMembersTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref SharedQueuesTable
+
+  DeleteQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-DeleteQueue
+      CodeUri: src/queues/
+      Handler: delete_queue.handler
+      Events:
+        DeleteQueue:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /queues/{queueId}
+            Method: DELETE
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SharedQueuesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QueueMembersTable
+
+  DeleteQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-DeleteQueue
+      CodeUri: src/queues/
+      Handler: delete_queue.handler
+      Events:
+        DeleteQueue:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /queues/{queueId}
+            Method: DELETE
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QueueMembersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SharedQueuesTable
+
+  DeleteQueueFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-DeleteQueue
+      CodeUri: src/queues/
+      Handler: delete_queue.handler
+      Events:
+        DeleteQueue:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /queues/{queueId}
+            Method: DELETE
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SharedQueuesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref QueueMembersTable
+
+  # ============================================
+  # IAM Roles
+  # ============================================
+  
+  SchedulerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: InvokeLambda
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'lambda:InvokeFunction'
+                Resource: !GetAtt DiscoverActiveUsersFunction.Arn
+
+  # ============================================
+  # Lambda Permissions for WebSocket API
+  # ============================================
+  
+  WsConnectPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WsConnectFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
+
+  WsDisconnectPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WsDisconnectFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
+
+  WsDefaultPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref WsDefaultFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketApi}/*'
+
+Outputs:
+  RestApiUrl:
+    Description: REST API Gateway endpoint URL
+    Value: !Sub 'https://${RestApi}.execute-api.${AWS::Region}.amazonaws.com/prod/'
+  
+  WebSocketApiUrl:
+    Description: WebSocket API Gateway endpoint URL
+    Value: !Sub 'wss://${WebSocketApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}'
+  
+  PresencePollQueueUrl:
+    Description: SQS Queue URL for presence polling
+    Value: !Ref PresencePollQueue
+
+  FrontendUrl:
+    Description: HTTPS entrypoint for the static frontend
+    Value: !Sub 'https://${FrontendDistribution.DomainName}'
+
+

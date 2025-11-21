@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Queue - Token Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 800px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 16px;
+        }
+        
+        .token-box {
+            background: #f8f9fa;
+            border: 2px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+            word-break: break-all;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        
+        button {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-right: 10px;
+        }
+        
+        button:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        .button-group {
+            margin-top: 20px;
+        }
+        
+        .status {
+            padding: 12px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-weight: 500;
+        }
+        
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .user-info {
+            background: #e7f3ff;
+            border-left: 4px solid #0066cc;
+            padding: 15px;
+            margin: 20px 0;
+        }
+        
+        .user-info h3 {
+            color: #0066cc;
+            margin-bottom: 10px;
+        }
+        
+        .user-info p {
+            margin: 5px 0;
+            color: #333;
+        }
+        
+        code {
+            background: #f8f9fa;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎵 Spotify Queue Platform</h1>
+        <p class="subtitle">JWT Token Viewer & Tester</p>
+        
+        <div id="content">
+            <div class="status success">
+                ✅ Ready to extract your token!
+            </div>
+            
+            <h3>Your JWT Token:</h3>
+            <div id="tokenDisplay" class="token-box">
+                Waiting for token...
+            </div>
+            
+            <div class="button-group">
+                <button onclick="copyToken()">📋 Copy Token</button>
+                <button onclick="testToken()">🧪 Test Token</button>
+                <button onclick="loginAgain()">🔄 Login Again</button>
+            </div>
+            
+            <div id="result"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'https://g4000gbef0.execute-api.us-east-1.amazonaws.com/prod/';
+        let currentToken = null;
+
+        // Extract token from URL
+        window.onload = function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            const error = urlParams.get('error');
+            
+            if (error) {
+                document.getElementById('tokenDisplay').innerHTML = 
+                    `<div class="error">❌ Error: ${error}</div>`;
+                return;
+            }
+            
+            if (token) {
+                currentToken = token;
+                document.getElementById('tokenDisplay').textContent = token;
+                document.getElementById('tokenDisplay').classList.add('success');
+                
+                // Automatically test the token
+                setTimeout(() => testToken(), 500);
+            } else {
+                document.getElementById('tokenDisplay').innerHTML = 
+                    `<div class="error">No token found in URL. Please <a href="#" onclick="loginAgain(); return false;">login first</a>.</div>`;
+            }
+        };
+
+        function copyToken() {
+            if (!currentToken) {
+                alert('No token to copy!');
+                return;
+            }
+            
+            navigator.clipboard.writeText(currentToken).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied!';
+                setTimeout(() => btn.textContent = originalText, 2000);
+            });
+        }
+
+        async function testToken() {
+            if (!currentToken) {
+                alert('No token to test!');
+                return;
+            }
+            
+            const resultDiv = document.getElementById('result');
+            resultDiv.innerHTML = '<div class="loader"></div>';
+            
+            try {
+                const response = await fetch(API_URL + 'me', {
+                    headers: {
+                        'Authorization': 'Bearer ' + currentToken
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML = `
+                        <div class="user-info">
+                            <h3>✅ Token Valid! Your Profile:</h3>
+                            <p><strong>User ID:</strong> <code>${data.data.userId}</code></p>
+                            <p><strong>Spotify ID:</strong> <code>${data.data.spotifyId}</code></p>
+                            <p><strong>Display Name:</strong> ${data.data.displayName || 'N/A'}</p>
+                            <p><strong>Email:</strong> ${data.data.email || 'N/A'}</p>
+                            <p><strong>Visibility:</strong> ${data.data.visibility}</p>
+                        </div>
+                        <div class="status success">
+                            <strong>Ready to use!</strong> Copy the token and use it in your API requests:
+                            <br><br>
+                            <code>export JWT_TOKEN="${currentToken.substring(0, 50)}..."</code>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <div class="status error">
+                            ❌ Token validation failed: ${data.message || data.error}
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <div class="status error">
+                        ❌ Error testing token: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        async function loginAgain() {
+            try {
+                document.getElementById('result').innerHTML = '<div class="loader"></div><p style="text-align: center;">Redirecting to Spotify...</p>';
+                
+                const response = await fetch(API_URL + 'auth/spotify');
+                const data = await response.json();
+                
+                if (data.data && data.data.authUrl) {
+                    // Redirect to Spotify authorization page
+                    window.location.href = data.data.authUrl;
+                } else {
+                    alert('Error: Could not get authorization URL');
+                    document.getElementById('result').innerHTML = '';
+                }
+            } catch (error) {
+                alert('Error connecting to API: ' + error.message);
+                document.getElementById('result').innerHTML = '';
+            }
+        }
+    </script>
+</body>
+</html>
+

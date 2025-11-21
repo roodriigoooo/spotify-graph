@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Token Tester</title>
+    <style>
+        body {
+            font-family: monospace;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .box {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        input, textarea {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 12px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #1DB954;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #1ed760;
+        }
+        .result {
+            margin-top: 15px;
+            padding: 15px;
+            border-radius: 4px;
+        }
+        .success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 JWT Token Tester</h1>
+    
+    <div class="box">
+        <h3>1. Paste Your Token</h3>
+        <textarea id="tokenInput" rows="5" placeholder="Paste your JWT token here (everything after token= in the URL)"></textarea>
+        <button onclick="testToken()">Test Token</button>
+    </div>
+    
+    <div id="result"></div>
+
+    <script>
+        const API_URL = 'https://g4000gbef0.execute-api.us-east-1.amazonaws.com/prod/';
+
+        async function testToken() {
+            const token = document.getElementById('tokenInput').value.trim();
+            const resultDiv = document.getElementById('result');
+            
+            resultDiv.innerHTML = '<div class="box"><p>Testing...</p></div>';
+            
+            // Validation 1: Check token format
+            const parts = token.split('.');
+            if (parts.length !== 3) {
+                resultDiv.innerHTML = `
+                    <div class="box result error">
+                        <h3>❌ Invalid Token Format</h3>
+                        <p>JWT tokens must have exactly 3 parts separated by dots.</p>
+                        <p>Your token has <strong>${parts.length}</strong> parts.</p>
+                        <p><strong>Common issues:</strong></p>
+                        <ul>
+                            <li>You copied the URL instead of just the token part</li>
+                            <li>You didn't copy the entire token (it's usually 200+ characters)</li>
+                            <li>You copied extra spaces or newlines</li>
+                        </ul>
+                        <p><strong>What to copy:</strong> Everything after <code>token=</code> in the browser URL bar</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            resultDiv.innerHTML += `
+                <div class="box result success">
+                    <h3>✅ Token Format Valid</h3>
+                    <p>Token length: ${token.length} characters</p>
+                    <p>Parts: ${parts[0].length} . ${parts[1].length} . ${parts[2].length}</p>
+                </div>
+            `;
+            
+            // Test 2: Try to decode JWT (client-side)
+            try {
+                const payload = JSON.parse(atob(parts[1]));
+                resultDiv.innerHTML += `
+                    <div class="box result success">
+                        <h3>✅ Token Decoded Successfully</h3>
+                        <pre>${JSON.stringify(payload, null, 2)}</pre>
+                        <p><strong>User ID:</strong> ${payload.userId}</p>
+                        <p><strong>Spotify ID:</strong> ${payload.spotifyId}</p>
+                        <p><strong>Expires:</strong> ${new Date(payload.exp * 1000).toLocaleString()}</p>
+                    </div>
+                `;
+                
+                // Check expiration
+                if (payload.exp * 1000 < Date.now()) {
+                    resultDiv.innerHTML += `
+                        <div class="box result error">
+                            <h3>⚠️ Token Expired</h3>
+                            <p>This token expired on ${new Date(payload.exp * 1000).toLocaleString()}</p>
+                            <p>You need to get a new token.</p>
+                        </div>
+                    `;
+                    return;
+                }
+            } catch (e) {
+                resultDiv.innerHTML += `
+                    <div class="box result error">
+                        <h3>❌ Failed to Decode Token</h3>
+                        <p>${e.message}</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            // Test 3: Try API call
+            try {
+                resultDiv.innerHTML += `<div class="box"><p>Testing API call...</p></div>`;
+                
+                const response = await fetch(API_URL + 'me', {
+                    headers: {
+                        'Authorization': 'Bearer ' + token,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    resultDiv.innerHTML += `
+                        <div class="box result success">
+                            <h3>✅ API Call Successful!</h3>
+                            <p>Your token is working correctly!</p>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                            <p><strong>You can now use this token in the demo interface.</strong></p>
+                        </div>
+                    `;
+                } else {
+                    resultDiv.innerHTML += `
+                        <div class="box result error">
+                            <h3>❌ API Call Failed</h3>
+                            <p><strong>Status:</strong> ${response.status}</p>
+                            <pre>${JSON.stringify(data, null, 2)}</pre>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML += `
+                    <div class="box result error">
+                        <h3>❌ Network Error</h3>
+                        <p>${error.message}</p>
+                        <p>This might be a CORS issue. Make sure you're accessing this page via HTTP (http://localhost:8000), not as a file:// URL.</p>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
+

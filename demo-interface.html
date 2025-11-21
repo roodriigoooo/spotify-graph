@@ -1,0 +1,1296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Shared Queue Platform</title>
+    <style>
+        :root {
+            --primary: #1DB954;
+            --dark: #121212;
+            --light: #FFFFFF;
+            --gray: #535353;
+            --glass: rgba(255, 255, 255, 0.05);
+            --border: rgba(255, 255, 255, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background-color: var(--dark);
+            color: var(--light);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+        }
+        
+        .container {
+            width: 100%;
+            max-width: 1200px;
+        }
+        
+        /* Minimalist Header */
+        .header {
+            text-align: left;
+            margin-bottom: 60px;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-weight: 700;
+            font-size: 24px;
+            letter-spacing: -0.5px;
+        }
+        
+        .header p {
+            color: #888;
+            font-size: 14px;
+            margin-top: 5px;
+        }
+
+        /* Glass Cards */
+        .card {
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 30px;
+            margin-bottom: 30px;
+            transition: transform 0.2s ease;
+        }
+        
+        .card h2 {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 25px;
+            color: var(--primary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        /* Grid Layout */
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 30px;
+        }
+        
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+        
+        /* Inputs & Buttons */
+        input, textarea {
+            width: 100%;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid var(--border);
+            padding: 15px;
+            color: white;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-family: inherit;
+        }
+        
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        
+        button {
+            background: transparent;
+            color: var(--light);
+            border: 1px solid var(--border);
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        
+        button:hover {
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+        
+        button.primary {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: black;
+            font-weight: 600;
+        }
+        
+        button.primary:hover {
+            background: #1ed760;
+            transform: scale(1.02);
+        }
+        
+        button.danger {
+            border-color: #e74c3c;
+            color: #e74c3c;
+        }
+        
+        button.danger:hover {
+            background: #e74c3c;
+            color: white;
+        }
+
+        /* Items */
+        .item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .item:last-child {
+            border-bottom: none;
+        }
+        
+        .item-info {
+            flex: 1;
+        }
+        
+        .meta {
+            font-size: 12px;
+            color: #888;
+            margin-top: 4px;
+        }
+
+        /* Search Results */
+        .search-result {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: rgba(255,255,255,0.02);
+            margin-bottom: 5px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        
+        .search-result:hover {
+            background: rgba(255,255,255,0.05);
+        }
+        
+        .album-art {
+            width: 40px;
+            height: 40px;
+            margin-right: 15px;
+            border-radius: 4px;
+            background: #333;
+            object-fit: cover;
+        }
+
+        /* Graph */
+        .graph-card h2 {
+            text-transform: none;
+            letter-spacing: 0;
+        }
+
+        #graphArea {
+            position: relative;
+            width: 100%;
+            min-height: 420px;
+        }
+
+        #listeningGraph {
+            width: 100%;
+            height: 520px;
+        }
+
+        .graph-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .graph-header p {
+            color: #aaa;
+            font-size: 13px;
+            margin-top: 6px;
+        }
+
+        .graph-status {
+            font-size: 12px;
+            color: #bbb;
+        }
+
+        .graph-legend {
+            display: flex;
+            gap: 20px;
+            flex-wrap: wrap;
+            font-size: 12px;
+            color: #bbb;
+            margin-top: 20px;
+        }
+
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .graph-tooltip {
+            position: absolute;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 10px 12px;
+            border-radius: 8px;
+            font-size: 12px;
+            line-height: 1.5;
+            border: 1px solid var(--border);
+            pointer-events: none;
+            transform: translate(-50%, -100%);
+        }
+
+        /* Utilities */
+        .hidden { display: none !important; }
+        .text-right { text-align: right; }
+        .mt-20 { margin-top: 20px; }
+        
+        .loader {
+            border: 2px solid rgba(255,255,255,0.1);
+            border-top: 2px solid var(--primary);
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+        }
+        
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Login Centered */
+        .login-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+            text-align: center;
+        }
+
+        /* Alert styles */
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 13px;
+        }
+        
+        .alert-error {
+            background: rgba(231, 76, 60, 0.1);
+            border: 1px solid #e74c3c;
+            color: #e74c3c;
+        }
+        .alert-success {
+            background: rgba(29, 185, 84, 0.1);
+            border: 1px solid #1DB954;
+            color: #1DB954;
+        }
+        
+        .presence-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .presence-item:last-child {
+            border-bottom: none;
+        }
+        
+        .presence-item img {
+            width: 40px;
+            height: 40px;
+            border-radius: 6px;
+            object-fit: cover;
+            background: #1f1f1f;
+        }
+        
+        .presence-name {
+            font-weight: 600;
+        }
+        
+        .presence-track {
+            font-size: 12px;
+            color: #aaa;
+            margin-top: 2px;
+        }
+        
+        .presence-timestamp {
+            margin-left: auto;
+            font-size: 11px;
+            color: #777;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <div>
+                <h1>Shared Queue</h1>
+                <p>Serverless Spotify Platform</p>
+            </div>
+            <div id="userInfo" class="hidden">
+                <span id="userDisplayName">User</span>
+                <button onclick="logout()" style="margin-left: 15px;">Logout</button>
+            </div>
+        </div>
+
+        <!-- Login Section -->
+        <div id="loginSection" class="login-container">
+            <h2 style="margin-bottom: 20px;">Welcome</h2>
+            <p style="color: #888; margin-bottom: 30px; max-width: 400px;">Connect your Spotify account to start creating and sharing music queues with friends.</p>
+            <button class="primary" onclick="login()" style="font-size: 16px; padding: 15px 40px;">
+                Login with Spotify
+            </button>
+        </div>
+
+        <!-- App Section -->
+        <div id="appSection" class="hidden">
+            <div class="card graph-card">
+                <div class="graph-header">
+                    <div>
+                        <h2>Listening Graph</h2>
+                        <p>See how close your friends' sounds are right now.</p>
+                    </div>
+                    <div id="graphStatus" class="graph-status">Waiting for data…</div>
+                </div>
+                <div id="graphArea">
+                    <svg id="listeningGraph"></svg>
+                    <div id="graphTooltip" class="graph-tooltip hidden"></div>
+                </div>
+                <div class="graph-legend">
+                    <div><span class="legend-dot" style="background:#2ecc71;"></span>Now playing</div>
+                    <div><span class="legend-dot" style="background:#f6c343;"></span>Recently active</div>
+                    <div><span class="legend-dot" style="background:#ff6b6b;"></span>Idle</div>
+                </div>
+            </div>
+
+            <div class="actions-grid">
+            <div class="card">
+                    <h2>Profile</h2>
+                    <div id="profileContent">
+                    <div class="loader"></div>
+                </div>
+                    <div style="margin-top: 15px;">
+                        <button onclick="changeVisibility('public')">Public</button>
+                        <button onclick="changeVisibility('friends')">Friends</button>
+                        <button onclick="changeVisibility('private')">Private</button>
+                </div>
+            </div>
+
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0;">Friends</h2>
+                        <button class="primary" onclick="toggleAddFriend()" style="padding: 5px 15px; font-size: 12px;">+</button>
+                        </div>
+                    <div id="addFriendForm" class="hidden" style="margin-bottom: 20px;">
+                        <input type="text" id="friendSpotifyId" placeholder="Spotify Username">
+                        <button onclick="sendFriendRequest()">Send Request</button>
+                        <div id="friendResult"></div>
+                    </div>
+
+                    <div id="pendingRequests" class="hidden" style="margin-bottom: 20px;">
+                        <h3 style="font-size: 12px; color: var(--primary); margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Pending Invitations</h3>
+                        <div id="incomingRequests" style="margin-bottom: 10px;"></div>
+                        <div id="sentRequests"></div>
+                </div>
+
+                    <div id="friendsList">
+                        <div class="loader"></div>
+                        </div>
+                        </div>
+
+                <div class="card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h2 style="margin: 0;">Queues</h2>
+                        <button class="primary" onclick="toggleCreateQueue()" style="padding: 5px 15px; font-size: 12px;">New</button>
+                        </div>
+
+                    <div id="createQueueForm" class="hidden" style="margin-bottom: 20px; background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px;">
+                        <input type="text" id="queueName" placeholder="Queue Name">
+                        <button class="primary" onclick="createQueue()">Create</button>
+                        <div id="queueResult"></div>
+                    </div>
+
+                    <div style="margin-bottom: 20px; background: rgba(255,255,255,0.02); padding: 15px; border-radius: 8px;">
+                        <input type="text" id="joinQueueId" placeholder="Join with queue code">
+                        <button onclick="joinQueue()" style="margin-top: 10px; width: 100%;">Join Queue</button>
+                        <p class="meta" style="margin-top: 8px;">Share this code with friends to sync up.</p>
+                        <div id="joinQueueResult"></div>
+                    </div>
+
+                    <div id="queuesList">
+                        <p style="color: #666;">No queues yet.</p>
+                </div>
+            </div>
+
+            <div class="card">
+                    <h2>Activity Feed</h2>
+                    <p id="presenceStatus" style="color: #666; font-size: 13px;">Friends' activity will appear here...</p>
+                    <div id="presenceContent"></div>
+                </div>
+            </div>
+
+            <!-- Selected Queue View (Overlay or below) -->
+            <div id="queueDetailView" class="card hidden" style="margin-top: 30px; border: 1px solid var(--primary);">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 id="currentQueueName" style="margin: 0;">Queue Name</h2>
+                    <button onclick="closeQueueDetail()">Close</button>
+                    </div>
+
+                <div style="text-align: right; margin-bottom: 15px;">
+                    <button id="leaveQueueBtn" class="danger" onclick="leaveQueue()" style="padding: 5px 10px; font-size: 11px;">Leave Queue</button>
+                    </div>
+
+                <!-- Search Tracks -->
+                <div style="margin-bottom: 20px;">
+                    <input type="text" id="trackSearch" placeholder="Search for songs... (Press Enter)" onkeypress="handleSearchKey(event)">
+                    <button onclick="triggerSearch()" class="primary" style="width: 100%; margin-bottom: 10px;">Search</button>
+                    <div id="searchResults" style="max-height: 300px; overflow-y: auto;"></div>
+                    </div>
+
+                <div id="currentQueueTracks">
+                    <!-- Tracks go here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script>
+        const API_URL = 'https://g4000gbef0.execute-api.us-east-1.amazonaws.com/prod/';
+        const WS_URL = 'wss://6r7hqhf597.execute-api.us-east-1.amazonaws.com/prod';
+        const GRAPH_REFRESH_MS = 60000;
+        const MAX_PRESENCE_ITEMS = 10;
+        const DEFAULT_ALBUM_ART = 'https://via.placeholder.com/48?text=%F0%9F%8E%B5';
+        let currentToken = null;
+        let currentUser = null;
+        let activeQueueId = null;
+        let currentQueues = [];
+        let graphNodes = [];
+        let graphInterval = null;
+        let graphRequestInFlight = false;
+        const graphNodeIndex = new Map();
+        let ws = null;
+
+        window.onload = function() {
+            // 1. Check URL parameters (redirect from login)
+            const urlParams = new URLSearchParams(window.location.search);
+            const token = urlParams.get('token');
+            
+            if (token) {
+                // New login session
+                setToken(token);
+                // Clean URL
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } else {
+                // 2. Check local storage
+                const savedToken = localStorage.getItem('spotify_token');
+                if (savedToken) {
+                    setToken(savedToken);
+                }
+            }
+        };
+        
+        window.addEventListener('beforeunload', () => {
+            if (ws) {
+                ws.close();
+            }
+        });
+
+        window.addEventListener('resize', () => {
+            if (graphNodes.length) {
+                renderListeningGraph(graphNodes);
+            }
+        });
+
+        function connectWebSocket() {
+            if (!currentToken) return;
+
+            if (ws) {
+                ws.onopen = null;
+                ws.onclose = null;
+                ws.onmessage = null;
+                ws.onerror = null;
+                ws.close();
+            }
+
+            setPresenceStatus('Connecting to live updates…');
+
+            try {
+                ws = new WebSocket(`${WS_URL}?token=${currentToken}`);
+            } catch (error) {
+                console.error('WebSocket init error', error);
+                setPresenceStatus('Unable to connect to live updates.');
+                return;
+            }
+
+            ws.onopen = () => {
+                setPresenceStatus('Connected. Waiting for updates…');
+            };
+
+            ws.onclose = () => {
+                setPresenceStatus('Disconnected. Reconnecting…');
+                setTimeout(() => connectWebSocket(), 3000);
+            };
+
+            ws.onerror = (err) => console.error('WebSocket error', err);
+
+            ws.onmessage = (event) => {
+                try {
+                    const msg = JSON.parse(event.data);
+                    if (msg.type === 'presence_update') {
+                        updatePresenceUI(msg);
+                        if (msg.graphNode) {
+                            upsertGraphNode(msg.graphNode);
+                        } else if (msg.graphNode === null) {
+                            removeGraphNode(msg.userId);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Failed to parse WS message', e);
+                }
+            };
+        }
+
+        function setPresenceStatus(text) {
+            const statusEl = document.getElementById('presenceStatus');
+            if (statusEl) {
+                statusEl.textContent = text;
+            }
+        }
+
+        function updatePresenceUI(msg) {
+            const container = document.getElementById('presenceContent');
+            if (!container) return;
+
+            const statusEl = document.getElementById('presenceStatus');
+            if (statusEl) {
+                statusEl.textContent = 'Live presence updates';
+            }
+
+            const row = document.createElement('div');
+            row.className = 'presence-item';
+            row.id = `presence-${msg.userId}`;
+            row.innerHTML = buildPresenceRowMarkup({
+                displayName: msg.displayName,
+                spotifyId: msg.spotifyId,
+                presence: msg.data || {}
+            });
+
+            const existing = document.getElementById(row.id);
+            if (existing) existing.remove();
+
+            container.prepend(row);
+
+            while (container.children.length > MAX_PRESENCE_ITEMS) {
+                container.removeChild(container.lastChild);
+            }
+        }
+
+        function setGraphStatus(text) {
+            const el = document.getElementById('graphStatus');
+            if (el && text) {
+                el.textContent = text;
+            }
+        }
+
+        function syncGraphViews() {
+            graphNodes = Array.from(graphNodeIndex.values());
+            renderListeningGraph(graphNodes);
+            refreshPresenceListFromNodes(graphNodes);
+        }
+
+        function replaceGraphNodes(nodes = []) {
+            graphNodeIndex.clear();
+            nodes.forEach(node => {
+                if (node && node.userId) {
+                    graphNodeIndex.set(node.userId, node);
+                }
+            });
+            syncGraphViews();
+        }
+
+        function upsertGraphNode(node, silent = false) {
+            if (!node || !node.userId) return;
+            graphNodeIndex.set(node.userId, node);
+            if (!silent) syncGraphViews();
+        }
+
+        function removeGraphNode(userId, silent = false) {
+            if (!userId) return;
+            graphNodeIndex.delete(userId);
+            if (!silent) syncGraphViews();
+        }
+
+        function restartGraphPolling() {
+            if (graphInterval) clearInterval(graphInterval);
+            graphInterval = setInterval(() => {
+                if (!graphRequestInFlight) {
+                    loadPresenceGraph();
+                }
+            }, GRAPH_REFRESH_MS);
+        }
+
+        async function loadPresenceGraph() {
+            if (!currentToken || graphRequestInFlight) return;
+            graphRequestInFlight = true;
+            setGraphStatus('Updating listening graph…');
+            try {
+                const data = await apiCall('presence/network');
+                const nodes = data.data.nodes || [];
+                replaceGraphNodes(nodes);
+                const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                setGraphStatus(`Updated ${ts}`);
+            } catch (e) {
+                console.error(e);
+                setGraphStatus(e.message || 'Unable to load graph');
+            } finally {
+                graphRequestInFlight = false;
+            }
+        }
+
+        function formatPresenceTimestamp(updatedAt) {
+            const value = updatedAt ? (updatedAt > 1e12 ? updatedAt : updatedAt * 1000) : Date.now();
+            return new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function buildPresenceRowMarkup({ displayName, spotifyId, presence }) {
+            const name = displayName || spotifyId || 'Friend';
+            const trackLine = presence?.isPlaying && presence?.trackName
+                ? `${presence.trackName} • ${presence.artistName || ''}`
+                : '⏸ Not playing';
+            const albumArt = presence?.albumImageUrl || DEFAULT_ALBUM_ART;
+            const timestamp = formatPresenceTimestamp(presence?.updatedAt);
+
+            return `
+                <img src="${albumArt}" alt="album art">
+                <div>
+                    <div class="presence-name">${name}</div>
+                    <div class="presence-track">${trackLine}</div>
+                </div>
+                <div class="presence-timestamp">${timestamp}</div>
+            `;
+        }
+
+        function refreshPresenceListFromNodes(nodes = graphNodes) {
+            const container = document.getElementById('presenceContent');
+            if (!container) return;
+            const statusEl = document.getElementById('presenceStatus');
+            if (statusEl) statusEl.textContent = 'Live presence updates';
+
+            if (!nodes.length) {
+                container.innerHTML = '<p class="meta">No live activity yet.</p>';
+                return;
+            }
+            
+            const sorted = [...nodes].sort((a, b) => (b.presence?.updatedAt || 0) - (a.presence?.updatedAt || 0));
+            const fragment = document.createDocumentFragment();
+
+            sorted.slice(0, MAX_PRESENCE_ITEMS).forEach(node => {
+                const row = document.createElement('div');
+                row.className = 'presence-item';
+                row.id = `presence-${node.userId}`;
+                row.innerHTML = buildPresenceRowMarkup({
+                    displayName: node.displayName,
+                    spotifyId: node.spotifyId,
+                    presence: node.presence || {}
+                });
+                fragment.appendChild(row);
+            });
+
+            container.innerHTML = '';
+            container.appendChild(fragment);
+        }
+
+        function renderListeningGraph(nodes = []) {
+            const area = document.getElementById('graphArea');
+            const svgElement = document.getElementById('listeningGraph');
+            if (!area || !svgElement) return;
+
+            const width = area.clientWidth || 600;
+            const height = 520;
+
+            const svg = d3.select(svgElement);
+            svg.attr('viewBox', `0 0 ${width} ${height}`);
+            svg.selectAll('*').remove();
+
+            hideGraphTooltip();
+
+            if (!nodes.length) {
+                svg.append('text')
+                    .attr('x', width / 2)
+                    .attr('y', height / 2)
+                    .attr('fill', '#666')
+                    .attr('text-anchor', 'middle')
+                    .text('No listening activity yet.');
+                return;
+            }
+            
+            const processedNodes = nodes.map(node => ({
+                id: node.userId,
+                label: node.displayName || node.spotifyId || 'Friend',
+                presence: node.presence || {},
+                isSelf: currentUser && node.userId === currentUser.userId
+            }));
+
+            const nowSeconds = Date.now() / 1000;
+            processedNodes.forEach(node => {
+                const updatedAt = node.presence.updatedAt || 0;
+                const recentlyActive = updatedAt && (nowSeconds - updatedAt) < 3600;
+                node.radius = node.isSelf ? 28 : (node.presence.isPlaying ? 22 : (recentlyActive ? 18 : 14));
+                node.color = computeNodeColor(node, nowSeconds);
+            });
+
+            const links = [];
+            for (let i = 0; i < processedNodes.length; i++) {
+                for (let j = i + 1; j < processedNodes.length; j++) {
+                    const value = computeSimilarity(processedNodes[i], processedNodes[j]);
+                    links.push({ source: processedNodes[i].id, target: processedNodes[j].id, value });
+                }
+            }
+
+            const simulation = d3.forceSimulation(processedNodes)
+                .force('link', d3.forceLink(links).id(d => d.id).distance(d => 220 - (d.value || 0.1) * 150))
+                .force('charge', d3.forceManyBody().strength(-260))
+                .force('center', d3.forceCenter(width / 2, height / 2))
+                .force('collision', d3.forceCollide().radius(d => d.radius + 10));
+
+            const link = svg.append('g')
+                .attr('stroke', 'rgba(255,255,255,0.25)')
+                .selectAll('line')
+                .data(links)
+                .join('line')
+                .attr('stroke-width', d => 0.6 + d.value * 3)
+                .attr('stroke-opacity', d => 0.2 + d.value * 0.4);
+
+            const node = svg.append('g')
+                .selectAll('g')
+                .data(processedNodes)
+                .join('g')
+                .call(d3.drag()
+                    .on('start', dragstarted)
+                    .on('drag', dragged)
+                    .on('end', dragended));
+
+            node.append('circle')
+                .attr('r', d => d.radius)
+                .attr('fill', d => d.color)
+                .attr('stroke', '#0f0f0f')
+                .attr('stroke-width', 1.5);
+
+            node.append('text')
+                .text(d => d.label)
+                .attr('y', d => d.radius + 14)
+                .attr('text-anchor', 'middle')
+                .attr('fill', '#ddd')
+                .attr('font-size', '11px');
+
+            node.on('mousemove', (event, d) => showGraphTooltip(event, d))
+                .on('mouseleave', hideGraphTooltip);
+
+            simulation.on('tick', () => {
+                link
+                    .attr('x1', d => d.source.x)
+                    .attr('y1', d => d.source.y)
+                    .attr('x2', d => d.target.x)
+                    .attr('y2', d => d.target.y);
+
+                node.attr('transform', d => `translate(${d.x}, ${d.y})`);
+            });
+
+            function dragstarted(event, d) {
+                if (!event.active) simulation.alphaTarget(0.3).restart();
+                d.fx = d.x;
+                d.fy = d.y;
+            }
+
+            function dragged(event, d) {
+                d.fx = event.x;
+                d.fy = event.y;
+            }
+
+            function dragended(event, d) {
+                if (!event.active) simulation.alphaTarget(0);
+                d.fx = null;
+                d.fy = null;
+            }
+        }
+
+        function computeNodeColor(node, nowSeconds) {
+            if (node.isSelf) return '#ff8c69';
+            if (node.presence?.isPlaying) return '#2ecc71';
+            const updatedAt = node.presence?.updatedAt || 0;
+            if (updatedAt && (nowSeconds - updatedAt) < 3600) return '#f6c343';
+            return '#ff6b6b';
+        }
+
+        function computeSimilarity(a, b) {
+            const pa = a.presence || {};
+            const pb = b.presence || {};
+
+            if (!pa.trackName || !pb.trackName) return 0.2;
+            if (pa.trackName === pb.trackName) return 1;
+            if (pa.artistName && pb.artistName && pa.artistName === pb.artistName) return 0.85;
+
+            const wordsA = new Set((`${pa.artistName || ''} ${pa.trackName || ''}`).toLowerCase().split(/\s+/).filter(Boolean));
+            const wordsB = new Set((`${pb.artistName || ''} ${pb.trackName || ''}`).toLowerCase().split(/\s+/).filter(Boolean));
+            let overlap = 0;
+            wordsA.forEach(word => {
+                if (wordsB.has(word)) overlap++;
+            });
+
+            if (overlap >= 2) return 0.6;
+            if (overlap === 1) return 0.4;
+            return 0.15;
+        }
+
+        function showGraphTooltip(event, node) {
+            const tooltip = document.getElementById('graphTooltip');
+            if (!tooltip) return;
+            const [x, y] = d3.pointer(event, document.getElementById('graphArea'));
+            const trackLine = node.presence?.trackName
+                ? `${node.presence.trackName} • ${node.presence.artistName || ''}`
+                : 'Not playing anything';
+            tooltip.innerHTML = `<strong>${node.label}</strong><br>${trackLine}`;
+            tooltip.style.left = `${x + 20}px`;
+            tooltip.style.top = `${y}px`;
+            tooltip.classList.remove('hidden');
+        }
+
+        function hideGraphTooltip() {
+            const tooltip = document.getElementById('graphTooltip');
+            if (tooltip) {
+                tooltip.classList.add('hidden');
+            }
+        }
+
+        function setToken(token) {
+            currentToken = token;
+            localStorage.setItem('spotify_token', token);
+            
+            // Update UI
+            document.getElementById('loginSection').classList.add('hidden');
+            document.getElementById('appSection').classList.remove('hidden');
+            document.getElementById('userInfo').classList.remove('hidden');
+            
+            // Load Data
+            loadProfile();
+            loadFriends();
+            loadFriendRequests();
+            loadQueues();
+            loadPresenceGraph();
+            restartGraphPolling();
+            connectWebSocket();
+        }
+
+        function logout() {
+            currentToken = null;
+            currentUser = null;
+            localStorage.removeItem('spotify_token');
+            if (graphInterval) {
+                clearInterval(graphInterval);
+                graphInterval = null;
+            }
+            location.reload();
+        }
+
+        async function login() {
+            try {
+                const response = await fetch(API_URL + 'auth/spotify');
+                const data = await response.json();
+                if (data.data && data.data.authUrl) {
+                    window.location.href = data.data.authUrl;
+                } else {
+                    alert('Login failed: No auth URL returned');
+                }
+            } catch (e) {
+                alert('Login error: ' + e.message);
+            }
+        }
+
+        async function apiCall(endpoint, options = {}) {
+            try {
+                const response = await fetch(API_URL + endpoint, {
+                    ...options,
+                    headers: {
+                        'X-Auth-Token': currentToken,
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    }
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        // Only logout if it's definitely an expired session, not just a bad request
+                        // But 401 usually means invalid token.
+                        logout();
+                        throw new Error('Session expired. Please login again.');
+                    }
+                    throw new Error(data.error || data.message || 'Request failed');
+                }
+
+                return data;
+            } catch (error) {
+                if (error.message === 'Failed to fetch') {
+                    throw new Error('Network error. Please check your connection.');
+                }
+                throw error;
+            }
+        }
+
+        // --- Core ---
+        async function loadProfile() {
+            try {
+                const data = await apiCall('me');
+                currentUser = data.data;
+                document.getElementById('userDisplayName').textContent = currentUser.displayName;
+                
+                const displayName = currentUser.displayName || currentUser.spotifyId || 'Friend';
+                const spotifyId = currentUser.spotifyId || 'unknown';
+                document.getElementById('profileContent').innerHTML = `
+                    <div style="font-size: 13px;">
+                        <p style="font-size:16px; font-weight:600;">${displayName}</p>
+                        <p><strong>Spotify display:</strong> ${displayName}</p>
+                        <p><strong>Spotify ID:</strong> @${spotifyId}</p>
+                        <p><strong>Internal ID:</strong> <span style="font-size:11px; color:#999;">${currentUser.userId}</span></p>
+                        <p><strong>Visibility:</strong> ${currentUser.visibility}</p>
+                    </div>
+                `;
+                if (graphNodes.length) {
+                    renderListeningGraph(graphNodes);
+                }
+                loadFriendRequests();
+            } catch(e) { 
+                document.getElementById('profileContent').innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+            }
+        }
+        
+        async function changeVisibility(v) {
+            try {
+                await apiCall('me/visibility', { method: 'PUT', body: JSON.stringify({ visibility: v }) });
+                loadProfile();
+            } catch(e) { alert(e.message); }
+        }
+
+        // --- Friends ---
+        function toggleAddFriend() {
+            document.getElementById('addFriendForm').classList.toggle('hidden');
+        }
+
+        async function loadFriends() {
+            try {
+                const data = await apiCall('friends');
+                const friends = data.data || [];
+                
+                if (friends.length === 0) {
+                    document.getElementById('friendsList').innerHTML = '<p style="color:#666; font-size:12px;">No friends yet</p>';
+                } else {
+                    document.getElementById('friendsList').innerHTML = friends.map(f => {
+                        const name = f.displayName || `@${f.spotifyId || 'friend'}`;
+                        const handle = f.spotifyId ? `@${f.spotifyId}` : '';
+                        return `
+                        <div class="item">
+                            <div class="item-info">
+                                <div>${name}</div>
+                                <div class="meta">${handle}</div>
+                            </div>
+                            <button class="danger" onclick="deleteFriend('${f.userId}')" style="padding:5px 10px; font-size:10px;">x</button>
+                        </div>
+                `;
+                    }).join('');
+                }
+            } catch(e) { 
+                // Don't show alert for empty friends list or minor errors
+                console.error(e);
+            }
+        }
+
+        async function loadFriendRequests() {
+            if (!currentToken || !currentUser) return;
+            try {
+                const response = await apiCall('friends/requests');
+                const incoming = response.data?.incoming || [];
+                const outgoing = response.data?.outgoing || [];
+
+                const section = document.getElementById('pendingRequests');
+                if (!section) return;
+
+                if (!incoming.length && !outgoing.length) {
+                    section.classList.add('hidden');
+                    document.getElementById('incomingRequests').innerHTML = '';
+                    document.getElementById('sentRequests').innerHTML = '';
+                return;
+            }
+
+                section.classList.remove('hidden');
+
+                document.getElementById('incomingRequests').innerHTML = incoming.length
+                    ? incoming.map(r => `
+                        <div class="item">
+                            <div class="item-info">
+                                <div style="font-weight:600;">${r.fromDisplayName || r.fromSpotifyId || 'Friend'}</div>
+                                <div class="meta">@${r.fromSpotifyId || 'unknown'}</div>
+                            </div>
+                            <button class="primary" style="padding:5px 10px; font-size:10px;" onclick="acceptFriendRequest('${r.requestId}')">Accept</button>
+                        </div>
+                    `).join('')
+                    : '<p class="meta">No incoming requests</p>';
+
+                document.getElementById('sentRequests').innerHTML = outgoing.length
+                    ? `
+                        <p class="meta" style="margin-top:10px;">Waiting for:</p>
+                        ${outgoing.map(r => `
+                            <div class="item">
+                                <div class="item-info">
+                                    <div style="font-weight:600;">${r.toDisplayName || r.toSpotifyId || 'Friend'}</div>
+                                    <div class="meta">@${r.toSpotifyId || 'unknown'}</div>
+                                </div>
+                                <div class="meta">Pending</div>
+                            </div>
+                        `).join('')}
+                    `
+                    : '';
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function sendFriendRequest() {
+            const id = document.getElementById('friendSpotifyId').value;
+            try {
+                await apiCall('friends/request', { method: 'POST', body: JSON.stringify({ toSpotifyId: id }) });
+                showAlert('friendResult', 'Sent!', 'success');
+                setTimeout(() => {
+                    loadFriends();
+                    loadFriendRequests();
+                }, 1000);
+            } catch(e) { showAlert('friendResult', e.message, 'error'); }
+        }
+        
+        async function acceptFriendRequest(requestId) {
+            try {
+                await apiCall('friends/accept', { method: 'POST', body: JSON.stringify({ requestId }) });
+                loadFriendRequests();
+                loadFriends();
+            } catch (e) {
+                showAlert('friendResult', e.message, 'error');
+            }
+        }
+        
+        async function deleteFriend(id) {
+             if(!confirm('Remove friend?')) return;
+             try {
+                 await apiCall(`friends/${id}`, { method: 'DELETE' });
+                 loadFriends();
+             } catch(e) { alert(e.message); }
+        }
+
+        // --- Queues ---
+        function toggleCreateQueue() {
+            document.getElementById('createQueueForm').classList.toggle('hidden');
+        }
+
+        async function loadQueues() {
+            if (!currentToken) return;
+
+            try {
+                const data = await apiCall('queues');
+                currentQueues = data.data.queues || [];
+
+                if (currentQueues.length === 0) {
+                    document.getElementById('queuesList').innerHTML = '<p style="color:#666;">No queues yet. Create one or join a friend using their code.</p>';
+                    return;
+                }
+
+                document.getElementById('queuesList').innerHTML = currentQueues.map(q => `
+                    <div class="item" style="align-items: flex-start;">
+                        <div class="item-info" onclick='openQueue("${q.queueId}", ${JSON.stringify(q.name || 'Queue')})' style="cursor:pointer;">
+                            <div>${q.name}</div>
+                            <div class="meta">Code: ${q.queueId}</div>
+                            <div class="meta">${q.memberRole === 'owner' ? 'Owner' : 'Member'} • ${q.memberCount || 1} participant${(q.memberCount || 1) === 1 ? '' : 's'}</div>
+                        </div>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="copyQueueCode('${q.queueId}')" style="padding:5px 10px; font-size:10px;">Copy</button>
+                            <button class="primary" onclick='openQueue("${q.queueId}", ${JSON.stringify(q.name || 'Queue')})' style="padding:5px 10px; font-size:10px;">Open</button>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (e) {
+                document.getElementById('queuesList').innerHTML = `<div class="alert alert-error">${e.message}</div>`;
+            }
+        }
+
+        async function createQueue() {
+            const name = document.getElementById('queueName').value;
+            try {
+                const data = await apiCall('queues', { method: 'POST', body: JSON.stringify({ name }) });
+                await loadQueues();
+                toggleCreateQueue();
+                openQueue(data.data.queueId, data.data.name || name);
+            } catch(e) { showAlert('queueResult', e.message, 'error'); }
+        }
+
+        async function joinQueue() {
+            const queueId = document.getElementById('joinQueueId').value.trim();
+            if (!queueId) {
+                showAlert('joinQueueResult', 'Enter a queue code first.', 'error');
+                return;
+            }
+
+            try {
+                const data = await apiCall(`queues/${queueId}/join`, { method: 'POST' });
+                showAlert('joinQueueResult', 'Joined queue!', 'success');
+                document.getElementById('joinQueueId').value = '';
+                await loadQueues();
+                openQueue(queueId, data.data.name);
+            } catch (e) {
+                showAlert('joinQueueResult', e.message, 'error');
+            }
+        }
+
+        async function copyQueueCode(id) {
+            try {
+                await navigator.clipboard.writeText(id);
+                showAlert('joinQueueResult', 'Queue code copied to clipboard.', 'success');
+            } catch (e) {
+                showAlert('joinQueueResult', 'Unable to copy this code.', 'error');
+            }
+        }
+
+        async function openQueue(id, name) {
+            activeQueueId = id;
+            const resolvedName = name || (currentQueues.find(q => q.queueId === id)?.name) || 'Queue';
+            document.getElementById('currentQueueName').textContent = resolvedName;
+            document.getElementById('queueDetailView').classList.remove('hidden');
+            refreshQueueTracks();
+        }
+
+        function closeQueueDetail() {
+            document.getElementById('queueDetailView').classList.add('hidden');
+            activeQueueId = null;
+        }
+
+        async function refreshQueueTracks() {
+            if(!activeQueueId) return;
+            try {
+                const data = await apiCall(`queues/${activeQueueId}`);
+                const tracks = data.data.tracks || [];
+                const isOwner = currentUser && data.data.ownerId === currentUser.userId;
+                
+                const btn = document.getElementById('leaveQueueBtn');
+                btn.textContent = isOwner ? 'Delete Queue' : 'Leave Queue';
+
+                document.getElementById('currentQueueTracks').innerHTML = tracks.map(t => `
+                    <div class="item">
+                        <img src="${t.albumImageUrl || ''}" class="album-art">
+                        <div class="item-info">
+                            <div>${t.trackName}</div>
+                            <div class="meta">${t.artistName}</div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function leaveQueue() {
+            if(!activeQueueId) return;
+            
+            try {
+                const queueData = await apiCall(`queues/${activeQueueId}`);
+                const isOwner = queueData.data.ownerId === currentUser.userId;
+                
+                if (isOwner) {
+                    if(!confirm('Delete queue permanently?')) return;
+                    await apiCall(`queues/${activeQueueId}`, { method: 'DELETE' });
+                } else {
+                    if(!confirm('Leave queue?')) return;
+                    await apiCall(`queues/${activeQueueId}/leave`, { method: 'POST' });
+                }
+                
+                await loadQueues();
+                closeQueueDetail();
+            } catch(e) { alert(e.message); }
+        }
+
+        // --- Search ---
+        function handleSearchKey(e) {
+            if (e.key === 'Enter') triggerSearch();
+        }
+
+        async function triggerSearch() {
+            const q = document.getElementById('trackSearch').value.trim();
+            if(q.length < 2) return;
+            
+            try {
+                document.getElementById('searchResults').innerHTML = '<div class="loader"></div>';
+                const data = await apiCall(`tracks/search?q=${encodeURIComponent(q)}&limit=5`);
+                
+                if (!data.data || data.data.length === 0) {
+                    document.getElementById('searchResults').innerHTML = '<p style="color:#888; font-size:13px;">No results</p>';
+                    return;
+                }
+                
+                document.getElementById('searchResults').innerHTML = data.data.map(t => `
+                    <div class="search-result" onclick='addTrack(${JSON.stringify(t).replace(/'/g, "&#39;")})'>
+                        <img src="${t.albumImageUrl}" class="album-art">
+                        <div class="item-info">
+                            <div style="font-size: 13px;">${t.trackName}</div>
+                            <div class="meta">${t.artistName}</div>
+                        </div>
+                        <button class="primary" style="padding: 5px 10px; font-size: 10px;">Add</button>
+                    </div>
+                `).join('');
+            } catch(e) { 
+                document.getElementById('searchResults').innerHTML = `<p style="color:#e74c3c; font-size:12px;">${e.message}</p>`;
+            }
+        }
+
+        async function addTrack(track) {
+            if(!activeQueueId) return;
+            try {
+                await apiCall(`queues/${activeQueueId}/tracks`, {
+                    method: 'POST',
+                    body: JSON.stringify(track)
+                });
+                document.getElementById('searchResults').innerHTML = '';
+                document.getElementById('trackSearch').value = '';
+                refreshQueueTracks();
+            } catch(e) { alert(e.message); }
+        }
+
+        function showAlert(id, msg, type) {
+            const el = document.getElementById(id);
+            el.innerHTML = `<div class="alert alert-${type}">${msg}</div>`;
+            setTimeout(() => el.innerHTML = '', 3000);
+        }
+    </script>
+</body>
+</html>
+
+
+
