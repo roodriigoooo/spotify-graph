@@ -9,6 +9,6 @@ currently WIP: would like to develop the similarity mechanism, perhaps
 employing historical user's reproduction history and recent footprints to 
 develop more interesting embeddings. 
 
-![graph example](graph.screenshot.png "Screenshot from Platform")
+![graph example](graph_screenshot.png "Screenshot from Platform")
 
 Authors: Johanna Schmucker and Rodrigo Sastré
