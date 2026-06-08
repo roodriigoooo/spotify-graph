@@ -21,6 +21,7 @@ Typical use:
 from .facets import UserTasteProfile, artist_facet, genre_facet, lyric_facet
 from .params import EngineParams
 from .metric import score_pair
+from .adapter import build_profile
 from .whitening import WhiteningParams, apply_whitening
 from .calibration import PercentileCalibrator
 from .blend import facet_weights, uniform_weights, blend
@@ -36,7 +37,7 @@ from .aggregation import (
 )
 
 __all__ = [
-    "UserTasteProfile", "EngineParams", "score_pair",
+    "UserTasteProfile", "EngineParams", "score_pair", "build_profile",
     "artist_facet", "genre_facet", "lyric_facet",
     "WhiteningParams", "apply_whitening", "PercentileCalibrator",
     "facet_weights", "uniform_weights", "blend",
