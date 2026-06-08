@@ -14,7 +14,7 @@ import sys
 
 import numpy as np
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src", "common")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "layers", "common", "common")))
 
 from taste import UserTasteProfile, EngineParams, score_pair, recency_weight  # noqa: E402
 from taste.fit import fit_whitening  # noqa: E402

@@ -6,28 +6,22 @@ batched call, averages them, and updates the user's music profile.
 Expected payload: {userId: str, tracks: [{id, name, artistName}]}
 """
 import os
-import sys
 import time
 from decimal import Decimal
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from common.dynamodb_utils import update_item
 from common.lyrics_client import fetch_lyrics
 from common.embedding_client import get_embeddings_batch, average_embeddings
 from common.logger import log_info, log_error, log_warning
 
-
 MUSIC_PROFILES_TABLE = os.environ.get('MUSIC_PROFILES_TABLE')
 HUGGINGFACE_API_KEY = os.environ.get('HUGGINGFACE_API_KEY')
 MAX_TRACKS = 20
 
-
 def _fetch_lyrics_for_track(track):
     lyrics = fetch_lyrics(track.get('name', ''), track.get('artistName', ''))
     return lyrics
-
 
 def handler(event, context):
     user_id = event.get('userId')

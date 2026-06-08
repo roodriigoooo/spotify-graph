@@ -34,6 +34,8 @@ Globals:
     Runtime: python3.12
     Timeout: 30
     MemorySize: 256
+    Layers:
+      - !Ref CommonLayer
     Environment:
       Variables:
         USERS_TABLE: !Ref UsersTable
@@ -48,6 +50,25 @@ Globals:
         FRONTEND_CALLBACK_URL: !Ref FrontendUrl
 
 Resources:
+  # ============================================
+  # Shared Lambda Layer
+  # ============================================
+  # One source of truth for the hand-written `common/` package (utils + the v2 `taste`
+  # engine) and the few third-party deps not already in the runtime (requests, PyJWT).
+  # boto3/botocore ship with the python3.12 runtime, so they are NOT vendored. This
+  # replaces the old pattern of copying `common/` (and all of boto3) into all 7 functions.
+  CommonLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: SpotifyQueue-Common
+      Description: Shared common/ package (utils + taste engine) and runtime deps
+      ContentUri: layers/common/
+      CompatibleRuntimes:
+        - python3.12
+      RetentionPolicy: Retain
+    Metadata:
+      BuildMethod: python3.12
+
   # ============================================
   # DynamoDB Tables
   # ============================================

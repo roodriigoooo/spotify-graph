@@ -2,13 +2,9 @@
 Accept friend request endpoint.
 """
 import os
-import sys
 import json
 import time
 import boto3
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from common.dynamodb_utils import get_item, update_item
 from common.response_utils import (
@@ -21,13 +17,11 @@ from common.response_utils import (
 from common.logger import log_info, log_error
 from botocore.exceptions import ClientError
 
-
 FRIENDS_TABLE = os.environ.get('FRIENDS_TABLE')
 FRIEND_REQUESTS_TABLE = os.environ.get('FRIEND_REQUESTS_TABLE')
 
 # Use DynamoDB client for transactions
 dynamodb_client = boto3.client('dynamodb')
-
 
 def handler(event, context):
     """
@@ -158,6 +152,4 @@ def handler(event, context):
     except Exception as e:
         log_error('Error accepting friend request', error=e)
         return server_error_response('Failed to accept friend request')
-
-
 

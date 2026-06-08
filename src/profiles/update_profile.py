@@ -4,11 +4,8 @@ Refreshes the current user's music profile by fetching Spotify data, saving
 taste data, and asynchronously invoking ComputeLyricProfileFunction.
 """
 import os
-import sys
 import json
 import time
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 import boto3
 from decimal import Decimal
@@ -18,11 +15,9 @@ from common.similarity import compute_genre_vector
 from common.response_utils import success_response, error_response
 from common.logger import log_info, log_error
 
-
 USERS_TABLE = os.environ.get('USERS_TABLE')
 MUSIC_PROFILES_TABLE = os.environ.get('MUSIC_PROFILES_TABLE')
 COMPUTE_LYRIC_FUNCTION_ARN = os.environ.get('COMPUTE_LYRIC_FUNCTION_ARN')
-
 
 def _get_valid_token(user: dict) -> str:
     """Return a valid access token, refreshing if within 5 minutes of expiry."""
@@ -46,7 +41,6 @@ def _get_valid_token(user: dict) -> str:
         )
 
     return access_token
-
 
 def handler(event, context):
     user_id = event.get('requestContext', {}).get('authorizer', {}).get('userId')

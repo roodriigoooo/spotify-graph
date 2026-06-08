@@ -2,13 +2,9 @@
 Send friend request endpoint.
 """
 import os
-import sys
 import json
 import uuid
 import time
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from common.dynamodb_utils import put_item, get_item, query_items
 from common.response_utils import (
@@ -22,11 +18,9 @@ from common.logger import log_info, log_error
 from boto3.dynamodb.conditions import Key, Attr
 from botocore.exceptions import ClientError
 
-
 USERS_TABLE = os.environ.get('USERS_TABLE')
 FRIENDS_TABLE = os.environ.get('FRIENDS_TABLE')
 FRIEND_REQUESTS_TABLE = os.environ.get('FRIEND_REQUESTS_TABLE')
-
 
 def handler(event, context):
     """
@@ -154,6 +148,4 @@ def handler(event, context):
     except Exception as e:
         log_error('Error sending friend request', error=e)
         return server_error_response('Failed to send friend request')
-
-
 

@@ -57,6 +57,18 @@ class TestContinuousFootprint(unittest.TestCase):
         p = build_profile({"userId": "u"}, play_events=events, now_ts=NOW)
         self.assertGreater(p.artist_weights["a1"], p.artist_weights["a2"])
 
+    def test_precomputed_artist_weights_preferred(self):
+        # the ingest job writes an aggregated footprint; the graph path reads it directly
+        record = {
+            "userId": "u",
+            "artistWeights": {"a1": Decimal("4.2"), "a2": Decimal("1.1")},
+            "topArtists": {"long_term": [{"id": "ignored", "genres": ["jazz"]}]},
+        }
+        p = build_profile(record, now_ts=NOW)
+        self.assertEqual(set(p.artist_weights), {"a1", "a2"})
+        self.assertEqual(p.artist_weights["a1"], 4.2)
+        self.assertNotIn("ignored", p.artist_weights)
+
     def test_events_override_snapshot(self):
         record = {
             "userId": "u",

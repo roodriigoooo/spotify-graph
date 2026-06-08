@@ -3,17 +3,12 @@ GET /me/profile
 Returns the current user's music profile metadata (no raw vectors).
 """
 import os
-import sys
-
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from common.dynamodb_utils import get_item
 from common.response_utils import success_response, error_response
 from common.logger import log_error
 
-
 MUSIC_PROFILES_TABLE = os.environ.get('MUSIC_PROFILES_TABLE')
-
 
 def handler(event, context):
     user_id = event.get('requestContext', {}).get('authorizer', {}).get('userId')
