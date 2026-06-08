@@ -40,6 +40,8 @@ Globals:
         FRIENDS_TABLE: !Ref FriendsTable
         FRIEND_REQUESTS_TABLE: !Ref FriendRequestsTable
         MUSIC_PROFILES_TABLE: !Ref MusicProfilesTable
+        PLAY_EVENTS_TABLE: !Ref PlayEventsTable
+        TRACK_EMBEDDINGS_TABLE: !Ref TrackEmbeddingsTable
         SPOTIFY_CLIENT_ID: !Ref SpotifyClientId
         SPOTIFY_CLIENT_SECRET: !Ref SpotifyClientSecret
         JWT_SECRET: !Ref JWTSecret
@@ -141,6 +143,51 @@ Resources:
       KeySchema:
         - AttributeName: userId
           KeyType: HASH
+      # Stream lets a downstream consumer react to profile changes (e.g. invalidate a
+      # cached graph, recompute facet calibration) without polling.
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+
+  # PlayEvents — the continuous listening footprint (taste-engine v2). One row per play,
+  # aggregated with a recency half-life rather than read as a top-N snapshot. The sort key
+  # is "<playedAtEpochMs>#<trackId>" so a user's history reads back newest-first and each
+  # play is unique. Old rows self-expire via the `ttl` attribute to bound storage.
+  PlayEventsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SpotifyQueue-PlayEvents
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # TrackEmbeddings — a shared cache of per-track lyric embeddings (whitened offline).
+  # Keyed by trackId so the (rate-limited, paid) embedding call happens once per track and
+  # is reused across every user who plays it. `ttl` lets stale rows lapse if a model rolls.
+  TrackEmbeddingsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: SpotifyQueue-TrackEmbeddings
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: trackId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: trackId
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
 
   # ============================================
   # CloudFront Distribution for Frontend
@@ -440,6 +487,8 @@ Resources:
             TableName: !Ref UsersTable
         - DynamoDBCrudPolicy:
             TableName: !Ref MusicProfilesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PlayEventsTable
         - Statement:
             - Effect: Allow
               Action:
@@ -460,6 +509,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref MusicProfilesTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref TrackEmbeddingsTable
 
   GetProfileStatusFunction:
     Type: AWS::Serverless::Function
@@ -504,6 +555,10 @@ Resources:
             TableName: !Ref FriendsTable
         - DynamoDBReadPolicy:
             TableName: !Ref MusicProfilesTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref PlayEventsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref TrackEmbeddingsTable
 
 Outputs:
   RestApiUrl:
