@@ -1,0 +1,24 @@
+[package]
+name = "echoes-kernel"
+version = "0.1.0"
+edition = "2021"
+description = "overlapping echoes — taste-similarity kernel (whitened cosine, Sinkhorn-EMD, PCA projection), compiled to WASM for the browser."
+license = "MIT"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+# The pure kernel has zero dependencies and builds/tests natively. The WASM bindings live
+# behind the `wasm` feature so `cargo test` needs no wasm toolchain.
+[dependencies]
+wasm-bindgen = { version = "0.2", optional = true }
+serde = { version = "1", features = ["derive"], optional = true }
+serde-wasm-bindgen = { version = "0.6", optional = true }
+
+[features]
+default = []
+wasm = ["dep:wasm-bindgen", "dep:serde", "dep:serde-wasm-bindgen"]
+
+[profile.release]
+opt-level = "s"
+lto = true

@@ -29,6 +29,10 @@ export interface GraphEdge {
   source: string
   target: string
   similarity: number
+  // v2 engine: the honest breakdown behind the score (present on new responses).
+  blended?: number
+  facets?: Record<string, number>   // artist | genre | lyric -> [0,1]
+  weights?: Record<string, number>  // facet -> blend weight
 }
 
 export interface GraphData {
