@@ -382,6 +382,23 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref UsersTable
 
+  SetHistoryConsentFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-SetHistoryConsent
+      CodeUri: src/users/
+      Handler: set_history_consent.handler
+      Events:
+        SetHistoryConsent:
+          Type: Api
+          Properties:
+            RestApiId: !Ref RestApi
+            Path: /me/history-consent
+            Method: PUT
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+
   # ============================================
   # Lambda Functions - Friend Management
   # ============================================
@@ -550,6 +567,28 @@ Resources:
       Policies:
         - DynamoDBReadPolicy:
             TableName: !Ref MusicProfilesTable
+
+  # IngestPlays — continuous footprint ingestion (taste-engine v2). Runs on a schedule over
+  # every consenting user, and can also be invoked directly with {"userId": ...}.
+  IngestPlaysFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: SpotifyQueue-IngestPlays
+      CodeUri: src/profiles/
+      Handler: ingest_plays.handler
+      Timeout: 300
+      MemorySize: 512
+      Events:
+        ScheduledIngest:
+          Type: Schedule
+          Properties:
+            Schedule: rate(6 hours)
+            Description: Append consenting users' recent plays to PlayEvents
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PlayEventsTable
 
   # ============================================
   # Lambda Functions - Similarity Graph

@@ -242,10 +242,10 @@ def batch_get_items(table_name: str, keys: List[Dict]) -> List[Dict]:
 def transact_write_items(items: List[Dict]) -> bool:
     """
     Execute a transaction with multiple write operations.
-    
+
     Args:
         items: List of transaction items
-        
+
     Returns:
         True if successful, False otherwise
     """
@@ -257,6 +257,26 @@ def transact_write_items(items: List[Dict]) -> bool:
         if e.response['Error']['Code'] == 'TransactionCanceledException':
             return False
         raise
+
+
+def batch_write_items(table_name: str, items: List[Dict]) -> int:
+    """
+    Batch-put many items into a table (auto-batches + retries unprocessed via batch_writer).
+
+    Args:
+        table_name: Name of the table
+        items: List of item dicts to put
+
+    Returns:
+        Number of items written.
+    """
+    if not items:
+        return 0
+    table = get_table(table_name)
+    with table.batch_writer() as batch:
+        for item in items:
+            batch.put_item(Item=item)
+    return len(items)
 
 
 

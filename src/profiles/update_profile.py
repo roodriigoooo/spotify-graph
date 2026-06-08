@@ -10,13 +10,15 @@ import time
 import boto3
 from decimal import Decimal
 from common.spotify_client import SpotifyClient, SpotifyAPIError
-from common.dynamodb_utils import get_item, put_item, update_item
+from common.dynamodb_utils import get_item, put_item, update_item, batch_write_items
 from common.similarity import compute_genre_vector
+from common.play_events import to_play_events
 from common.response_utils import success_response, error_response
 from common.logger import log_info, log_error
 
 USERS_TABLE = os.environ.get('USERS_TABLE')
 MUSIC_PROFILES_TABLE = os.environ.get('MUSIC_PROFILES_TABLE')
+PLAY_EVENTS_TABLE = os.environ.get('PLAY_EVENTS_TABLE')
 COMPUTE_LYRIC_FUNCTION_ARN = os.environ.get('COMPUTE_LYRIC_FUNCTION_ARN')
 
 def _get_valid_token(user: dict) -> str:
@@ -103,6 +105,13 @@ def handler(event, context):
 
         put_item(MUSIC_PROFILES_TABLE, profile_item)
         log_info('Music profile saved', user_id=user_id)
+
+        # Append to the continuous footprint — only if the user opted in (see
+        # set_history_consent). Without consent we store no play history at all.
+        if user.get('historyConsent') and PLAY_EVENTS_TABLE:
+            written = batch_write_items(
+                PLAY_EVENTS_TABLE, to_play_events(recently_played, user_id, now_ts=now))
+            log_info('PlayEvents appended', user_id=user_id, rows=written)
 
         # Invoke lyric computation asynchronously
         lyric_tracks = lyric_tracks[:20]
