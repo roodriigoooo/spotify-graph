@@ -214,6 +214,43 @@ Resources:
   # CloudFront Distribution for Frontend
   # ============================================
 
+  # Private hosting bucket, readable only by the distribution via Origin Access Control.
+  # (The old spotify-queue-demo-hosting bucket lived in a since-closed AWS account.)
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'overlapping-echoes-hosting-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${FrontendBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:aws:cloudfront::${AWS::AccountId}:distribution/${FrontendDistribution}'
+
+  FrontendOriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub '${AWS::StackName}-frontend-oac'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
   FrontendDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -225,13 +262,18 @@ Resources:
         PriceClass: PriceClass_100
         Origins:
           - Id: S3StaticWebsite
-            DomainName: spotify-queue-demo-hosting.s3-website-us-east-1.amazonaws.com
-            CustomOriginConfig:
-              OriginProtocolPolicy: http-only
-              HTTPPort: 80
-              HTTPSPort: 443
-              OriginSSLProtocols:
-                - TLSv1.2
+            DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+            OriginAccessControlId: !Ref FrontendOriginAccessControl
+        # S3 REST origin answers 403 (not 404) for keys that don't exist; serve the app
+        # shell instead so stray paths land in the SPA. Short TTL so real permission
+        # errors don't stick.
+        CustomErrorResponses:
+          - ErrorCode: 403
+            ResponseCode: 200
+            ResponsePagePath: /index.html
+            ErrorCachingMinTTL: 60
         DefaultCacheBehavior:
           TargetOriginId: S3StaticWebsite
           ViewerProtocolPolicy: redirect-to-https
