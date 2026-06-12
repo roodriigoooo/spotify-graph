@@ -220,7 +220,7 @@ Resources:
       DistributionConfig:
         Enabled: true
         Comment: Spotify Graph Frontend
-        DefaultRootObject: demo-interface.html
+        DefaultRootObject: index.html
         HttpVersion: http2
         PriceClass: PriceClass_100
         Origins:
@@ -241,14 +241,18 @@ Resources:
           CachedMethods:
             - GET
             - HEAD
+          # Origin Cache-Control governs: the deploy ships hashed assets as
+          # max-age=31536000,immutable and index.html as no-cache. MaxTTL must not cap the
+          # immutable assets (the old 300s did, forcing an S3 refetch every 5 minutes), and
+          # static assets don't vary by query string — forwarding it only fragments the cache.
           ForwardedValues:
-            QueryString: true
+            QueryString: false
             Cookies:
               Forward: none
           Compress: true
           MinTTL: 0
-          DefaultTTL: 60
-          MaxTTL: 300
+          DefaultTTL: 86400
+          MaxTTL: 31536000
 
   # ============================================
   # REST API Gateway
@@ -259,6 +263,9 @@ Resources:
     Properties:
       Name: SpotifyQueue-RestApi
       StageName: prod
+      # gzip responses over 1KB — /graph ships nodes + per-edge facet breakdowns + genre
+      # summaries as JSON, which compresses ~5-10x. Cuts transfer cost and time to render.
+      MinimumCompressionSize: 1024
       Cors:
         AllowOrigin: "'*'"
         AllowHeaders: "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,X-Auth-Token'"
@@ -601,6 +608,10 @@ Resources:
       CodeUri: src/graph/
       Handler: get_graph.handler
       Timeout: 15
+      # CPU scales with memory on Lambda; pairwise WMD/Sinkhorn in pure Python is CPU-bound,
+      # so 512MB halves (or better) the duration — usually net cheaper than 256MB, and the
+      # warm-container score memo (get_graph._SCORE_CACHE) lives longer per dollar.
+      MemorySize: 512
       Events:
         GetGraph:
           Type: Api
