@@ -88,8 +88,20 @@ function topEigen(m: number[][], iters = 128): { vec: number[]; val: number } {
  * Classical MDS: embed n items in 2D from an n×n dissimilarity matrix so that euclidean
  * distance ≈ the given dissimilarity. Deterministic (power-iteration eigvecs). This is the
  * semantic canvas layout — position is taste, distance is dissimilarity.
+ *
+ * Delegates to the Rust→WASM kernel when it's loaded (same math, native speed); the TS
+ * body below is the always-available fallback.
  */
 export function mds2D(dissim: number[][]): Array<[number, number]> {
+  if (_native) {
+    try {
+      return _native.mds_2d(dissim) as Array<[number, number]>
+    } catch { /* fall through to TS */ }
+  }
+  return mds2DTs(dissim)
+}
+
+export function mds2DTs(dissim: number[][]): Array<[number, number]> {
   const n = dissim.length
   if (n === 0) return []
   if (n === 1) return [[0, 0]]
@@ -104,6 +116,70 @@ export function mds2D(dissim: number[][]): Array<[number, number]> {
   const s1 = Math.sqrt(Math.max(0, e1.val))
   const s2 = Math.sqrt(Math.max(0, e2.val))
   return e1.vec.map((_, i) => [e1.vec[i] * s1, e2.vec[i] * s2] as [number, number])
+}
+
+// ── glyph field ─────────────────────────────────────────────────────────────
+// 4×4 Bayer matrix — ordered dithering turns quantization error into a stable
+// pixel-honest pattern instead of noise. Mirrors `kernel::field_grid` in Rust.
+const BAYER4 = [
+  [0, 8, 2, 10],
+  [12, 4, 14, 6],
+  [3, 11, 1, 9],
+  [15, 7, 13, 5],
+] as const
+
+/**
+ * Rasterize the match-with-you field onto a cols×rows glyph grid (row-major levels in
+ * [0, levels)). A cell's intensity is the **max** over nodes of val·exp(−d²/2r²) — the
+ * strongest presence wins; values never sum, so a crowd of weak matches cannot fake a
+ * strong one. Runs per animation frame, so it prefers the Rust→WASM kernel when loaded.
+ */
+export function fieldGrid(
+  xs: number[], ys: number[], vals: number[],
+  cols: number, rows: number,
+  x0: number, y0: number, cellW: number, cellH: number,
+  radius: number, levels: number,
+): Uint8Array {
+  if (_native) {
+    try {
+      return _native.field_grid(
+        Float64Array.from(xs), Float64Array.from(ys), Float64Array.from(vals),
+        cols, rows, x0, y0, cellW, cellH, radius, levels,
+      )
+    } catch { /* fall through to TS */ }
+  }
+  return fieldGridTs(xs, ys, vals, cols, rows, x0, y0, cellW, cellH, radius, levels)
+}
+
+export function fieldGridTs(
+  xs: number[], ys: number[], vals: number[],
+  cols: number, rows: number,
+  x0: number, y0: number, cellW: number, cellH: number,
+  radius: number, levels: number,
+): Uint8Array {
+  const out = new Uint8Array(cols * rows)
+  if (levels < 2 || radius <= 0 || xs.length === 0) return out
+  const n = Math.min(xs.length, ys.length, vals.length)
+  const inv2r2 = 1 / (2 * radius * radius)
+  const maxLevel = levels - 1
+  for (let r = 0; r < rows; r++) {
+    const py = y0 + (r + 0.5) * cellH
+    for (let c = 0; c < cols; c++) {
+      const px = x0 + (c + 0.5) * cellW
+      let intensity = 0
+      for (let i = 0; i < n; i++) {
+        if (vals[i] <= 0) continue
+        const dx = px - xs[i]
+        const dy = py - ys[i]
+        const w = vals[i] * Math.exp(-(dx * dx + dy * dy) * inv2r2)
+        if (w > intensity) intensity = w
+      }
+      const q = clamp(intensity) * maxLevel
+      const t = (BAYER4[r % 4][c % 4] + 0.5) / 16
+      out[r * cols + c] = Math.min(maxLevel, Math.floor(q + t))
+    }
+  }
+  return out
 }
 
 /** PCA projection of a vector cloud to 2D (mirrors the kernel's `pca_project_2d`). */
@@ -134,23 +210,39 @@ export interface NativeKernel {
   cosine(a: number[], b: number[]): number
   wmd_similarity(a: number[][], b: number[][], wa: number[] | null, wb: number[] | null, eps: number, iters: number): number
   project_2d(points: number[][]): Array<[number, number]>
+  mds_2d(dissim: number[][]): Array<[number, number]>
+  field_grid(
+    xs: Float64Array, ys: Float64Array, vals: Float64Array,
+    cols: number, rows: number,
+    x0: number, y0: number, cellW: number, cellH: number,
+    radius: number, levels: number,
+  ): Uint8Array
 }
 
 let _native: NativeKernel | null = null
 
+/** Which implementation is live — surfaced in the UI so the kernel is honest about itself. */
+export function kernelBackend(): 'rust·wasm' | 'ts' {
+  return _native ? 'rust·wasm' : 'ts'
+}
+
 /**
- * Try to load the Rust→WASM kernel (built by rust/build-wasm.sh into ./kernel/pkg). Returns
- * null if it isn't built — callers fall back to the pure-TS functions above. Safe to call
- * once at startup.
+ * Try to load the Rust→WASM kernel (built by rust/build-wasm.sh into public/kernel/, which
+ * vite ships verbatim as the /kernel/ static dir). Returns null if it isn't built —
+ * `mds2D`/`fieldGrid` fall back to the pure-TS bodies. Safe to call once at startup; once
+ * resolved, every subsequent kernel call goes native.
  */
 export async function loadWasmKernel(): Promise<NativeKernel | null> {
   if (_native) return _native
   try {
-    // Non-literal path: the pkg only exists after building the crate, so we keep tsc/vite
-    // from trying to resolve it at build time.
-    const path = './kernel/pkg/' + 'echoes_kernel.js'
-    const mod: any = await import(/* @vite-ignore */ path)
-    if (mod.default) await mod.default()
+    // A full runtime URL, deliberately opaque to the bundler: the kernel is an optional
+    // static asset, not a build-time dependency, so the app builds with or without it.
+    // (A bare '/kernel/...' path won't do — vite's dev-server import analysis rejects
+    // source imports of public-dir files; an absolute http URL is treated as external and
+    // the browser imports it natively, in dev and prod alike.)
+    const url = new URL('/kernel/echoes_kernel.js', window.location.href).href
+    const mod: any = await import(/* @vite-ignore */ url)
+    if (mod.default) await mod.default()  // init: fetches echoes_kernel_bg.wasm next to the JS
     _native = mod as NativeKernel
     return _native
   } catch {

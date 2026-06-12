@@ -287,6 +287,110 @@ pub mod kernel {
             })
             .collect()
     }
+
+    /// Classical MDS: embed n items in 2D from an n×n dissimilarity matrix so euclidean
+    /// distance ≈ the given dissimilarity. Mirrors the TS `mds2D` step-for-step (double
+    /// centering of squared distances → top-2 eigenpairs by power iteration + deflation).
+    /// This is the semantic-canvas layout: position is taste, distance is dissimilarity.
+    pub fn mds_2d(dissim: &[Vec<f64>]) -> Vec<[f64; 2]> {
+        let n = dissim.len();
+        if n == 0 {
+            return vec![];
+        }
+        if n == 1 {
+            return vec![[0.0, 0.0]];
+        }
+        // double-centering of squared distances -> Gram matrix B
+        let d2: Vec<Vec<f64>> = dissim
+            .iter()
+            .map(|row| row.iter().map(|x| x * x).collect())
+            .collect();
+        let row_mean: Vec<f64> = d2.iter().map(|row| row.iter().sum::<f64>() / n as f64).collect();
+        let grand: f64 = row_mean.iter().sum::<f64>() / n as f64;
+        let mut b: Vec<Vec<f64>> = d2
+            .iter()
+            .enumerate()
+            .map(|(i, row)| {
+                row.iter()
+                    .enumerate()
+                    .map(|(j, x)| -0.5 * (x - row_mean[i] - row_mean[j] + grand))
+                    .collect()
+            })
+            .collect();
+        let (v1, l1) = top_eigenvector(&b, 128);
+        for i in 0..n {
+            for j in 0..n {
+                b[i][j] -= l1 * v1[i] * v1[j];
+            }
+        }
+        let (v2, l2) = top_eigenvector(&b, 128);
+        let s1 = l1.max(0.0).sqrt();
+        let s2 = l2.max(0.0).sqrt();
+        (0..n).map(|i| [v1[i] * s1, v2[i] * s2]).collect()
+    }
+
+    // ── glyph field ───────────────────────────────────────────────────────────
+    // 4×4 Bayer matrix for ordered dithering — the pixel-honest way to shade a glyph
+    // raster: quantization error becomes a stable spatial pattern, not random noise.
+    const BAYER4: [[f64; 4]; 4] = [
+        [0.0, 8.0, 2.0, 10.0],
+        [12.0, 4.0, 14.0, 6.0],
+        [3.0, 11.0, 1.0, 9.0],
+        [15.0, 7.0, 13.0, 5.0],
+    ];
+
+    /// Rasterize a similarity field onto a `cols`×`rows` glyph grid (row-major levels in
+    /// `0..levels`). Each node i at (xs[i], ys[i]) carries a value in [0,1] (its real
+    /// match-with-you); a cell's intensity is the **max** over nodes of
+    /// `val · exp(-d²/(2·radius²))` — the strongest presence wins, values never sum, so a
+    /// crowd of weak matches cannot fake a strong one. Cell (r,c) is sampled at its center:
+    /// `(x0 + (c+0.5)·cell_w, y0 + (r+0.5)·cell_h)`. Intensity is quantized to `levels`
+    /// glyphs with Bayer ordered dithering. This is the honest backdrop: glyph brightness
+    /// = interpolated match-with-you, dissolving to silence where there is no data.
+    pub fn field_grid(
+        xs: &[f64],
+        ys: &[f64],
+        vals: &[f64],
+        cols: usize,
+        rows: usize,
+        x0: f64,
+        y0: f64,
+        cell_w: f64,
+        cell_h: f64,
+        radius: f64,
+        levels: usize,
+    ) -> Vec<u8> {
+        let mut out = vec![0u8; cols * rows];
+        if levels < 2 || radius <= 0.0 || xs.is_empty() {
+            return out;
+        }
+        let n = xs.len().min(ys.len()).min(vals.len());
+        let inv_2r2 = 1.0 / (2.0 * radius * radius);
+        let max_level = (levels - 1) as f64;
+        for r in 0..rows {
+            let py = y0 + (r as f64 + 0.5) * cell_h;
+            for c in 0..cols {
+                let px = x0 + (c as f64 + 0.5) * cell_w;
+                let mut intensity: f64 = 0.0;
+                for i in 0..n {
+                    if vals[i] <= 0.0 {
+                        continue;
+                    }
+                    let dx = px - xs[i];
+                    let dy = py - ys[i];
+                    let w = vals[i] * (-(dx * dx + dy * dy) * inv_2r2).exp();
+                    if w > intensity {
+                        intensity = w;
+                    }
+                }
+                let q = clamp(intensity, 0.0, 1.0) * max_level;
+                let t = (BAYER4[r % 4][c % 4] + 0.5) / 16.0;
+                let level = (q + t).floor().min(max_level).max(0.0);
+                out[r * cols + c] = level as u8;
+            }
+        }
+        out
+    }
 }
 
 // ── WASM bindings (feature = "wasm") ────────────────────────────────────────────
@@ -355,5 +459,33 @@ mod wasm_api {
         let points: Vec<Vec<f64>> = from_js(points)?;
         let coords = kernel::pca_project_2d(&points);
         serde_wasm_bindgen::to_value(&coords).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Classical MDS from an n×n dissimilarity matrix to 2D — the semantic-canvas layout.
+    #[wasm_bindgen]
+    pub fn mds_2d(dissim: JsValue) -> Result<JsValue, JsValue> {
+        let dissim: Vec<Vec<f64>> = from_js(dissim)?;
+        let coords = kernel::mds_2d(&dissim);
+        serde_wasm_bindgen::to_value(&coords).map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// Rasterize the match-with-you field onto a glyph grid (row-major dither levels).
+    /// Plain numeric slices in, bytes out — no serde on the hot path; this runs every
+    /// animation frame while the layout glides.
+    #[wasm_bindgen]
+    pub fn field_grid(
+        xs: Vec<f64>,
+        ys: Vec<f64>,
+        vals: Vec<f64>,
+        cols: usize,
+        rows: usize,
+        x0: f64,
+        y0: f64,
+        cell_w: f64,
+        cell_h: f64,
+        radius: f64,
+        levels: usize,
+    ) -> Vec<u8> {
+        kernel::field_grid(&xs, &ys, &vals, cols, rows, x0, y0, cell_w, cell_h, radius, levels)
     }
 }

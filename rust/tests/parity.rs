@@ -69,6 +69,59 @@ fn whiten_centers_and_projects() {
 }
 
 #[test]
+fn mds_reconstructs_euclidean_distances() {
+    // a Euclidean-embeddable dissimilarity matrix (right triangle (0,0),(1,0),(0,1)):
+    // classical MDS must reproduce the pairwise distances.
+    let s2 = 2.0_f64.sqrt();
+    let dissim = vec![
+        vec![0.0, 1.0, 1.0],
+        vec![1.0, 0.0, s2],
+        vec![1.0, s2, 0.0],
+    ];
+    let c = kernel::mds_2d(&dissim);
+    assert_eq!(c.len(), 3);
+    let d = |i: usize, j: usize| (c[i][0] - c[j][0]).hypot(c[i][1] - c[j][1]);
+    assert!((d(0, 1) - 1.0).abs() < 1e-6, "d01={}", d(0, 1));
+    assert!((d(0, 2) - 1.0).abs() < 1e-6, "d02={}", d(0, 2));
+    assert!((d(1, 2) - s2).abs() < 1e-6, "d12={}", d(1, 2));
+}
+
+#[test]
+fn mds_degenerate_inputs() {
+    assert!(kernel::mds_2d(&[]).is_empty());
+    assert_eq!(kernel::mds_2d(&[vec![0.0]]), vec![[0.0, 0.0]]);
+}
+
+#[test]
+fn field_peaks_at_node_and_decays() {
+    // one full-match node at the grid center: brightest at the node, darker at the rim
+    let g = kernel::field_grid(&[50.0], &[50.0], &[1.0], 11, 11, 0.0, 0.0, 9.0909, 9.0909, 25.0, 6);
+    assert_eq!(g.len(), 121);
+    let center = g[5 * 11 + 5];
+    let corner = g[0];
+    assert_eq!(center, 5, "center cell should hit the top glyph level");
+    assert!(corner < center, "field must decay away from the node ({corner} !< {center})");
+}
+
+#[test]
+fn field_takes_max_not_sum() {
+    // two coincident half-matches must read exactly like one — crowding can't fake strength
+    let one = kernel::field_grid(&[50.0], &[50.0], &[0.6], 8, 8, 0.0, 0.0, 12.5, 12.5, 30.0, 6);
+    let two = kernel::field_grid(&[50.0, 50.0], &[50.0, 50.0], &[0.6, 0.6], 8, 8, 0.0, 0.0, 12.5, 12.5, 30.0, 6);
+    assert_eq!(one, two);
+}
+
+#[test]
+fn field_empty_and_zero_values_are_silent() {
+    assert!(kernel::field_grid(&[], &[], &[], 4, 4, 0.0, 0.0, 1.0, 1.0, 10.0, 6)
+        .iter()
+        .all(|&l| l == 0));
+    assert!(kernel::field_grid(&[1.0], &[1.0], &[0.0], 4, 4, 0.0, 0.0, 1.0, 1.0, 10.0, 6)
+        .iter()
+        .all(|&l| l == 0));
+}
+
+#[test]
 fn projection_is_2d_and_separates_clusters() {
     // two tight clusters far apart -> their 2D images should be far apart too
     let pts = vec![
