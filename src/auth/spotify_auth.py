@@ -3,13 +3,9 @@ Spotify OAuth authentication handler.
 Handles authorization URL generation and callback processing.
 """
 import os
-import sys
 import json
 import uuid
 import time
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from common.spotify_client import SpotifyClient, SpotifyAPIError
 from common.jwt_utils import generate_token
@@ -22,10 +18,8 @@ from common.response_utils import (
 from common.logger import log_info, log_error
 from boto3.dynamodb.conditions import Key
 
-
 USERS_TABLE = os.environ.get('USERS_TABLE')
 FRONTEND_CALLBACK_URL = os.environ.get('FRONTEND_CALLBACK_URL')
-
 
 def handler(event, context):
     """
@@ -50,7 +44,6 @@ def handler(event, context):
     except Exception as e:
         log_error('Spotify auth handler error', error=e)
         return server_error_response(str(e))
-
 
 def handle_auth_url(event, context):
     """
@@ -88,7 +81,6 @@ def handle_auth_url(event, context):
     except Exception as e:
         log_error('Error generating auth URL', error=e)
         return server_error_response('Failed to generate authorization URL')
-
 
 def handle_callback(event, context):
     """
@@ -194,7 +186,6 @@ def handle_callback(event, context):
         log_error('Error in callback handler', error=e)
         return redirect_to_frontend(error='internal_error')
 
-
 def redirect_to_frontend(token: str = None, error: str = None):
     """
     Create redirect response to frontend.
@@ -218,6 +209,4 @@ def redirect_to_frontend(token: str = None, error: str = None):
         },
         'body': ''
     }
-
-
 

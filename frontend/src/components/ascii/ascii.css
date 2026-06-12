@@ -1,0 +1,103 @@
+/* ascii.css — the pixel/terminal design kit ("claude-code, with soul").
+   Dark modules that sit over the graph canvas: near-black, green accent, mono, hairlines,
+   and motion that means something. */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap');
+
+:root {
+  --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --term-bg: rgba(13, 12, 11, 0.92);
+  --term-line: rgba(236, 228, 210, 0.16);
+  --term-line-soft: rgba(236, 228, 210, 0.08);
+  --term-ink: #E4DCCB;
+  --term-ink-dim: #7E7A6E;
+  --term-accent: #C9A24B;
+}
+
+/* ── Panel ─────────────────────────────────────────────────── */
+.ascii-panel {
+  position: relative;
+  background: var(--term-bg);
+  border: 1px solid var(--term-line);
+  border-radius: 2px;
+  font-family: var(--mono);
+  color: var(--term-ink);
+  backdrop-filter: blur(14px) saturate(1.1);
+  box-shadow: 0 10px 44px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(236, 228, 210, 0.025);
+  overflow: hidden;
+}
+/* whisper of a scanline — texture, not a costume */
+.ascii-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    0deg, rgba(236, 228, 210, 0.014) 0px, rgba(236, 228, 210, 0.014) 1px, transparent 1px, transparent 4px);
+  opacity: 0.4;
+  mix-blend-mode: screen;
+  animation: ascii-scan 12s linear infinite;
+}
+.ascii-panel__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--term-line-soft);
+  font-size: 10px;
+  letter-spacing: 1.4px;
+  text-transform: uppercase;
+  color: var(--term-accent);
+}
+.ascii-panel__title { display: flex; align-items: center; gap: 6px; }
+.ascii-panel__dot { color: var(--term-accent); }
+.ascii-panel__body { padding: 12px; font-size: 12px; line-height: 1.7; }
+
+/* blinking block cursor */
+.ascii-cursor::after {
+  content: '▋';
+  margin-left: 2px;
+  color: var(--term-accent);
+  animation: ascii-blink 1.05s steps(1) infinite;
+}
+
+/* ── Bar (animated ASCII meter) ────────────────────────────── */
+.ascii-bar { display: grid; grid-template-columns: 70px 1fr 46px; gap: 8px; align-items: center; margin: 6px 0; }
+.ascii-bar__label { font-size: 11px; color: var(--term-ink-dim); text-transform: lowercase; letter-spacing: 0.3px; }
+.ascii-bar__track { position: relative; font-size: 12px; letter-spacing: 1px; color: var(--term-ink-dim); white-space: nowrap; overflow: hidden; }
+.ascii-bar__fill {
+  position: absolute; top: 0; left: 0; height: 100%;
+  color: var(--term-accent); white-space: nowrap; overflow: hidden;
+  text-shadow: 0 0 6px rgba(201, 162, 75, 0.22);
+  transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.ascii-bar__val { font-size: 11px; color: var(--term-ink); text-align: right; font-variant-numeric: tabular-nums; }
+.ascii-bar__weight { font-size: 9px; color: var(--term-ink-dim); }
+
+/* ── Readout (dotted leader) ───────────────────────────────── */
+.ascii-readout { font-size: 11px; color: var(--term-ink-dim); white-space: pre; letter-spacing: 0.3px; }
+.ascii-readout b { color: var(--term-ink); font-weight: 500; }
+
+/* ── Spinner ───────────────────────────────────────────────── */
+.ascii-spinner { font-family: var(--mono); color: var(--term-accent); }
+.ascii-spinner__label { color: var(--term-ink-dim); margin-left: 8px; font-size: 11px; letter-spacing: 0.5px; }
+
+/* ── Marker caption ────────────────────────────────────────── */
+.ascii-cap {
+  font-family: var(--mono); font-size: 10px; letter-spacing: 0.5px;
+  color: var(--term-ink); text-shadow: 0 0 6px rgba(0,0,0,0.8);
+}
+
+/* ── animations ────────────────────────────────────────────── */
+@keyframes ascii-blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+@keyframes ascii-scan { from { background-position-y: 0; } to { background-position-y: 100px; } }
+@keyframes ascii-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+.ascii-anim-in { animation: ascii-in 0.22s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+@keyframes ascii-glitch {
+  0%, 92%, 100% { transform: translate(0, 0); clip-path: none; }
+  93% { transform: translate(-1px, 0); }
+  95% { transform: translate(1px, 0); }
+  97% { transform: translate(-1px, 0); }
+}
+.ascii-glitch:hover { animation: ascii-glitch 0.45s steps(2) 1; }

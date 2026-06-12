@@ -3,14 +3,9 @@ JWT Authorizer Lambda for API Gateway.
 Validates JWT tokens and returns IAM policy.
 """
 import os
-import sys
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from common.jwt_utils import decode_token
 from common.logger import log_info, log_error
-
 
 def handler(event, context):
     """
@@ -83,7 +78,6 @@ def handler(event, context):
         # Return deny policy
         raise Exception('Unauthorized')
 
-
 def generate_policy(principal_id: str, effect: str, resource: str) -> dict:
     """
     Generate IAM policy document.
@@ -121,6 +115,4 @@ def generate_policy(principal_id: str, effect: str, resource: str) -> dict:
     }
     
     return policy
-
-
 

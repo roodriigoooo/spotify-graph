@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
+import { Spinner, Typewriter, SPINNERS } from './ascii'
 
 const quotes = [
     "Is this the real life? Is this just fantasy?",
@@ -91,24 +92,17 @@ interface Props {
 }
 
 export default function LoadingScreen({ text }: Props) {
-    const [quoteIdx, setQuoteIdx] = useState(0)
-    const [quoteVisible, setQuoteVisible] = useState(true)
+    const [quoteIdx, setQuoteIdx] = useState(() => Math.floor(Math.random() * quotes.length))
     const [iconIdx, setIconIdx] = useState(0)
     const [iconVisible, setIconVisible] = useState(true)
 
     useEffect(() => {
-        setQuoteIdx(Math.floor(Math.random() * quotes.length))
-
-        // Quote cycling — every 2.8s
+        // Quote cycling — every 4.2s (long enough for the typewriter to finish).
         const quoteInt = setInterval(() => {
-            setQuoteVisible(false)
-            setTimeout(() => {
-                setQuoteIdx(prev => (prev + 1) % quotes.length)
-                setQuoteVisible(true)
-            }, 350)
-        }, 2800)
+            setQuoteIdx(prev => (prev + 1) % quotes.length)
+        }, 4200)
 
-        // Icon cycling — every 1.4s (twice as fast)
+        // Icon cycling — every 1.4s
         const iconInt = setInterval(() => {
             setIconVisible(false)
             setTimeout(() => {
@@ -149,32 +143,33 @@ export default function LoadingScreen({ text }: Props) {
                 <PixelArt grid={ICONS[iconIdx].grid} size={5} />
             </div>
 
-            {/* Label */}
-            <h2 style={{
+            {/* ASCII spinner + mono status line — the terminal heartbeat */}
+            <div style={{
+                fontFamily: "'JetBrains Mono', monospace",
                 fontSize: 11,
-                fontWeight: 600,
-                letterSpacing: 3,
-                marginBottom: 18,
-                textTransform: 'uppercase',
-                color: 'rgba(255,255,255,0.35)',
+                letterSpacing: 2,
+                marginBottom: 20,
+                color: '#C9A24B',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 2,
             }}>
-                {text || 'Loading'}
-            </h2>
+                <Spinner frames={SPINNERS.braille} label={(text || 'loading').toLowerCase()} />
+            </div>
 
-            {/* Cycling music quote */}
+            {/* Cycling music quote — typed out, char by char */}
             <p style={{
-                fontSize: 17,
-                color: 'rgba(255,255,255,0.72)',
-                fontStyle: 'italic',
-                fontWeight: 300,
-                opacity: quoteVisible ? 1 : 0,
-                transition: 'opacity 0.35s ease',
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 15,
+                color: 'rgba(201,209,201,0.75)',
+                fontWeight: 400,
                 textAlign: 'center',
                 maxWidth: '64%',
-                lineHeight: 1.55,
-                letterSpacing: 0.1,
+                minHeight: 44,
+                lineHeight: 1.6,
+                letterSpacing: 0.2,
             }}>
-                "{quotes[quoteIdx]}"
+                <Typewriter key={quoteIdx} text={`"${quotes[quoteIdx]}"`} speedMs={32} />
             </p>
         </div>
     )

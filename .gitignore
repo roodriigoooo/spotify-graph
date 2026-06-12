@@ -6,3 +6,19 @@ dist/
 __pycache__/
 .aws-sam/
 samconfig.toml
+
+# planning / checkpoint docs — local only, never committed
+PLAN.md
+PLAN.*.md
+*.plan.md
+*_PLAN.md
+
+# reference papers (kept locally; their substance lives in docs/EVIDENCE.md)
+*.pdf
+
+# rust build artifacts (the P3 wasm crate; only the source is tracked)
+rust/target/
+
+# generated prose docs (.md) — local until the author picks which to keep in the repo.
+# figures (docs/figures/*.svg) ARE tracked; only the markdown is held back.
+docs/*.md

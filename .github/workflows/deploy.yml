@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'frontend/**'
+      - 'rust/**'
 
   # Allow manual trigger from the GitHub Actions tab
   workflow_dispatch:
@@ -22,6 +23,23 @@ jobs:
           node-version: '20'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
+
+      # The Rust→WASM taste kernel. Built before the frontend so vite bundles it; if this
+      # step were skipped the app would silently ship the slower TS fallback forever.
+      - name: Set up Rust (wasm32)
+        run: rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+
+      - name: Install wasm-pack
+        # prebuilt binary — `cargo install` would compile it from source on every run
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM kernel
+        run: ./build-wasm.sh
+        working-directory: rust
 
       - name: Install dependencies
         run: npm ci
@@ -40,10 +58,25 @@ jobs:
 
       - name: Sync to S3
         run: |
+          # hashed assets: cache forever. index.html and /kernel/ (not content-hashed) are
+          # handled separately below with revalidating cache rules.
           aws s3 sync frontend/dist/ s3://spotify-queue-demo-hosting/ \
             --delete \
             --cache-control "max-age=31536000,immutable" \
-            --exclude "index.html"
+            --exclude "index.html" \
+            --exclude "kernel/*"
+
+          # the WASM kernel: short cache (filenames are stable across releases), and .wasm
+          # must be served as application/wasm or the browser falls back to the slow
+          # non-streaming instantiation path (s3 sync guesses MIME and often gets it wrong)
+          aws s3 sync frontend/dist/kernel/ s3://spotify-queue-demo-hosting/kernel/ \
+            --delete \
+            --cache-control "max-age=3600,must-revalidate" \
+            --exclude "*.wasm"
+          aws s3 cp frontend/dist/kernel/ s3://spotify-queue-demo-hosting/kernel/ \
+            --recursive --exclude "*" --include "*.wasm" \
+            --content-type "application/wasm" \
+            --cache-control "max-age=3600,must-revalidate"
 
           # index.html must not be cached so users always get the latest entry point
           aws s3 cp frontend/dist/index.html s3://spotify-queue-demo-hosting/index.html \

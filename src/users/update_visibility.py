@@ -2,11 +2,7 @@
 Update user visibility settings endpoint.
 """
 import os
-import sys
 import json
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from common.dynamodb_utils import update_item, get_item
 from common.response_utils import (
@@ -17,10 +13,8 @@ from common.response_utils import (
 )
 from common.logger import log_info, log_error
 
-
 USERS_TABLE = os.environ.get('USERS_TABLE')
 VALID_VISIBILITY_VALUES = ['private', 'friends', 'public']
-
 
 def handler(event, context):
     """
@@ -89,6 +83,4 @@ def handler(event, context):
     except Exception as e:
         log_error('Error updating visibility', error=e)
         return server_error_response('Failed to update visibility')
-
-
 

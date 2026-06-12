@@ -2,20 +2,14 @@
 List pending friend requests endpoint.
 """
 import os
-import sys
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
 from common.dynamodb_utils import query_items, batch_get_items
 from common.response_utils import success_response, server_error_response
 from common.logger import log_info, log_error
 from boto3.dynamodb.conditions import Key, Attr
 
-
 FRIEND_REQUESTS_TABLE = os.environ.get('FRIEND_REQUESTS_TABLE')
 USERS_TABLE = os.environ.get('USERS_TABLE')
-
 
 def handler(event, context):
     """
@@ -93,7 +87,4 @@ def handler(event, context):
     except Exception as e:
         log_error('Error listing friend requests', error=e)
         return server_error_response('Failed to retrieve friend requests')
-
-
-
 
