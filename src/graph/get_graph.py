@@ -22,10 +22,19 @@ from common.logger import log_info, log_error
 from boto3.dynamodb.conditions import Key
 
 from graph_core import build_graph, load_params
+from archetypes import archetype_profile_records, archetype_user_records
 
 USERS_TABLE = os.environ.get('USERS_TABLE')
 FRIENDS_TABLE = os.environ.get('FRIENDS_TABLE')
 MUSIC_PROFILES_TABLE = os.environ.get('MUSIC_PROFILES_TABLE')
+
+# Container-lifetime memo of score_pair results. WMD/Sinkhorn over per-track embeddings is
+# the expensive part of a request (O(n²) pairs, each ~40×40 transport problem in pure
+# Python); profiles change rarely, requests repeat often. Keys are profile-versioned
+# (see graph_core._pair_key) so a refresh invalidates itself. ENGINE_PARAMS is env-fixed
+# per container, so it can't go stale within one cache lifetime.
+_SCORE_CACHE = {}
+_SCORE_CACHE_MAX = 4096
 
 def handler(event, context):
     user_id = event.get('requestContext', {}).get('authorizer', {}).get('userId')
@@ -53,8 +62,23 @@ def handler(event, context):
         records_by_id = {p['userId']: p for p in raw_profiles}
         users_by_id = {u['userId']: u for u in raw_users}
 
+        # Archetype landmarks: persistent, genre-defined personas added to the graph so it is
+        # meaningful even with zero friends (you get plotted against them). Additive only — they
+        # are never persisted, so the friend mechanism never sees them. Opt out with ?archetypes=0.
+        # Only in taste mode: archetypes have no lyric-theme data yet, so in lyric mode they'd be
+        # edgeless floaters — omit them until phase 2 gives them real theme embeddings.
+        if mode == 'taste' and params.get('archetypes', '1') != '0':
+            for aid, rec in archetype_profile_records().items():
+                records_by_id[aid] = rec
+                all_user_ids.append(aid)
+            for aid, urec in archetype_user_records().items():
+                users_by_id[aid] = urec
+
+        if len(_SCORE_CACHE) > _SCORE_CACHE_MAX:
+            _SCORE_CACHE.clear()
         graph = build_graph(user_id, all_user_ids, records_by_id, users_by_id,
-                            mode=mode, engine_params=engine_params)
+                            mode=mode, engine_params=engine_params,
+                            score_cache=_SCORE_CACHE)
 
         log_info('Graph computed', user_id=user_id, mode=mode,
                  nodes=len(graph['nodes']), edges=len(graph['edges']))

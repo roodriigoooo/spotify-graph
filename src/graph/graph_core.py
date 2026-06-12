@@ -30,8 +30,42 @@ def load_params() -> EngineParams:
     return EngineParams()
 
 
+def _top_genres(profile, k=8):
+    """Top-k of the normalized genre distribution — the node's compact taste summary.
+
+    Shipped on every node so the UI can render comparative imagery (you-vs-friend genre
+    histograms) without a second request. [[genre, weight], ...], weights sum ≤ 1.
+    """
+    items = sorted(profile.genre_dist.items(), key=lambda kv: (-kv[1], kv[0]))[:k]
+    return [[g, round(float(w), 4)] for g, w in items]
+
+
+def _top_artist_names(record, k=5):
+    """Top-k artist display names from the profile snapshot (best-effort; may be [])."""
+    top = (record or {}).get('topArtists') or {}
+    if not isinstance(top, dict):
+        return []
+    for rng in ('medium_term', 'long_term', 'short_term'):
+        names = [a.get('name') for a in (top.get(rng) or []) if isinstance(a, dict) and a.get('name')]
+        if names:
+            return [str(n) for n in names[:k]]
+    return []
+
+
+def _pair_key(uid_a, uid_b, rec_a, rec_b):
+    """Order-independent cache key for a scored pair, versioned by profile timestamps.
+
+    A profile refresh bumps `lastUpdated` / `lastLyricUpdate`, which rotates the key — so a
+    warm Lambda container can memoize WMD-heavy `score_pair` results across requests without
+    ever serving a stale score. Archetype records carry no timestamps and never change.
+    """
+    va = (uid_a, str(rec_a.get('lastUpdated', '')), str(rec_a.get('lastLyricUpdate', '')))
+    vb = (uid_b, str(rec_b.get('lastUpdated', '')), str(rec_b.get('lastLyricUpdate', '')))
+    return tuple(sorted((va, vb)))
+
+
 def build_graph(user_id, all_user_ids, records_by_id, users_by_id, mode='taste',
-                engine_params=None):
+                engine_params=None, score_cache=None):
     """
     Pure graph builder — no I/O.
 
@@ -42,6 +76,8 @@ def build_graph(user_id, all_user_ids, records_by_id, users_by_id, mode='taste',
         users_by_id: userId -> Users record (for display name / spotify id).
         mode: 'taste' (calibrated blend) or 'lyric' (lyric facet alone).
         engine_params: fitted EngineParams (defaults applied if None).
+        score_cache: optional dict for memoizing score_pair results across calls (the
+            handler passes a container-lifetime dict; keys are profile-versioned).
 
     Returns:
         {'mode', 'nodes', 'edges'} — every edge carries similarity + the per-facet
@@ -58,6 +94,9 @@ def build_graph(user_id, all_user_ids, records_by_id, users_by_id, mode='taste',
     for uid in all_user_ids:
         user_rec = users_by_id.get(uid, {})
         record = records_by_id.get(uid)
+        # Archetype landmarks are id-prefixed `archetype:`; the UI renders them distinctly and
+        # never offers friend actions on them. Everything else is a real person.
+        is_arch = isinstance(uid, str) and uid.startswith('archetype:')
         nodes.append({
             'userId': uid,
             'displayName': user_rec.get('displayName', ''),
@@ -65,6 +104,11 @@ def build_graph(user_id, all_user_ids, records_by_id, users_by_id, mode='taste',
             'isCurrentUser': uid == user_id,
             'hasProfile': record is not None,
             'lyricStatus': record.get('lyricStatus') if record else None,
+            'kind': 'archetype' if is_arch else 'user',
+            'description': user_rec.get('description', '') if is_arch else '',
+            # compact taste summary for the comparative-imagery panels (V2/V3)
+            'topGenres': _top_genres(taste_by_id[uid]) if uid in taste_by_id else [],
+            'topArtists': _top_artist_names(record),
         })
 
     edges = []
@@ -75,7 +119,15 @@ def build_graph(user_id, all_user_ids, records_by_id, users_by_id, mode='taste',
             if pa is None or pb is None:
                 continue
 
-            result = score_pair(pa, pb, engine_params)
+            result = None
+            key = None
+            if score_cache is not None:
+                key = _pair_key(uid_a, uid_b, records_by_id[uid_a], records_by_id[uid_b])
+                result = score_cache.get(key)
+            if result is None:
+                result = score_pair(pa, pb, engine_params)
+                if score_cache is not None:
+                    score_cache[key] = result
             facets = result['facets']
 
             if mode == 'lyric':
@@ -94,4 +146,9 @@ def build_graph(user_id, all_user_ids, records_by_id, users_by_id, mode='taste',
                 'weights': {k: round(v, 4) for k, v in result['weights'].items()},
             })
 
-    return {'mode': mode, 'nodes': nodes, 'edges': edges}
+    # Tell the UI whether `similarity` is already an absolute, calibrated percentile. When false
+    # (no calibrator fitted yet) the ego-graph spreads scores relative to the field instead of
+    # claiming absolute %s. Shipping a fitted calibrator flips this to true with no UI change.
+    calibrated = bool(engine_params.calibrator and not engine_params.calibrator.is_empty)
+
+    return {'mode': mode, 'nodes': nodes, 'edges': edges, 'calibrated': calibrated}
