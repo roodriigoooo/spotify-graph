@@ -20,7 +20,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          # 24+: npm 11 reads the darwin-generated lockfile's optional-dep entries
+          # correctly (npm 10 under node 20 rejected it: "Missing @esbuild/... from lock")
+          node-version: '24'
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
