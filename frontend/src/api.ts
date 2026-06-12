@@ -1,4 +1,8 @@
-const API = 'https://9q14rl4vc1.execute-api.us-east-1.amazonaws.com/prod'
+const API = 'https://zl83bft0ve.execute-api.us-east-1.amazonaws.com/prod'
+
+// VITE_MOCK=1 (npm run dev:mock) swaps every request for local fixtures — full-UI testing
+// with no backend, no Spotify login. Build-time constant, so prod bundles drop the branch.
+const MOCK = import.meta.env.VITE_MOCK === '1'
 
 let _onUnauthorized: (() => void) | null = null
 
@@ -11,6 +15,7 @@ function token() {
 }
 
 async function req<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (MOCK) return (await import('./mock')).mockReq<T>(path, init)
   const t = token()
   const res = await fetch(API + path, {
     ...init,
@@ -37,7 +42,9 @@ export async function getAuthUrl(): Promise<string> {
 export const getMe = () => req<any>('/me')
 export const getProfile = () => req<any>('/me/profile')
 export const refreshProfile = () => req<any>('/me/profile/refresh', { method: 'POST' })
-export const getGraph = (mode: string) => req<any>(`/graph?mode=${mode}`)
+// One fetch serves every lens: edges carry the full facet breakdown, so artist/genre/lyric
+// views are derived client-side. (The server still accepts ?mode= for older clients.)
+export const getGraph = () => req<any>('/graph')
 export const getFriends = () => req<any[]>('/friends')
 export const getFriendRequests = () => req<any>('/friends/requests')
 

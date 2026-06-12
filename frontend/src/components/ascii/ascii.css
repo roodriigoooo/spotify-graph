@@ -6,12 +6,12 @@
 
 :root {
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  --term-bg: rgba(8, 11, 8, 0.94);
-  --term-line: rgba(0, 255, 65, 0.18);
-  --term-line-soft: rgba(0, 255, 65, 0.10);
-  --term-ink: #c9d1c9;
-  --term-ink-dim: #5a6a5a;
-  --term-accent: #00FF41;
+  --term-bg: rgba(13, 12, 11, 0.92);
+  --term-line: rgba(236, 228, 210, 0.16);
+  --term-line-soft: rgba(236, 228, 210, 0.08);
+  --term-ink: #E4DCCB;
+  --term-ink-dim: #7E7A6E;
+  --term-accent: #C9A24B;
 }
 
 /* ── Panel ─────────────────────────────────────────────────── */
@@ -23,20 +23,20 @@
   font-family: var(--mono);
   color: var(--term-ink);
   backdrop-filter: blur(14px) saturate(1.1);
-  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(0, 255, 65, 0.03);
+  box-shadow: 0 10px 44px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(236, 228, 210, 0.025);
   overflow: hidden;
 }
-/* faint scanline texture */
+/* whisper of a scanline — texture, not a costume */
 .ascii-panel::after {
   content: '';
   position: absolute;
   inset: 0;
   pointer-events: none;
   background: repeating-linear-gradient(
-    0deg, rgba(0, 255, 65, 0.035) 0px, rgba(0, 255, 65, 0.035) 1px, transparent 1px, transparent 3px);
-  opacity: 0.5;
+    0deg, rgba(236, 228, 210, 0.014) 0px, rgba(236, 228, 210, 0.014) 1px, transparent 1px, transparent 4px);
+  opacity: 0.4;
   mix-blend-mode: screen;
-  animation: ascii-scan 8s linear infinite;
+  animation: ascii-scan 12s linear infinite;
 }
 .ascii-panel__bar {
   display: flex;
@@ -68,7 +68,7 @@
 .ascii-bar__fill {
   position: absolute; top: 0; left: 0; height: 100%;
   color: var(--term-accent); white-space: nowrap; overflow: hidden;
-  text-shadow: 0 0 8px rgba(0, 255, 65, 0.45);
+  text-shadow: 0 0 6px rgba(201, 162, 75, 0.22);
   transition: width 0.7s cubic-bezier(0.22, 1, 0.36, 1);
 }
 .ascii-bar__val { font-size: 11px; color: var(--term-ink); text-align: right; font-variant-numeric: tabular-nums; }

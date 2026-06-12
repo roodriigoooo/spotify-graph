@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import * as api from './api'
-import type { User, Profile, GraphData, Friend, FriendRequests } from './types'
+import { LENSES, type Lens, type User, type Profile, type GraphData, type Friend, type FriendRequests } from './types'
+import { loadWasmKernel, kernelBackend } from './kernel'
 import Graph from './components/Graph'
 import ProfilePanel from './components/ProfilePanel'
 import FriendsPanel from './components/FriendsPanel'
@@ -13,13 +14,20 @@ export default function App() {
   const [graphData, setGraphData] = useState<GraphData | null>(null)
   const [friends, setFriends] = useState<Friend[]>([])
   const [friendRequests, setFriendRequests] = useState<FriendRequests>({ incoming: [], outgoing: [] })
-  const [mode, setMode] = useState<'taste' | 'lyric'>('taste')
+  // one graph fetch serves all lenses; switching is a client-side re-read of edge facets
+  const [lens, setLens] = useState<Lens>('blend')
+  const [kernel, setKernel] = useState(kernelBackend())
   const [initialLoad, setInitialLoad] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [leftOpen, setLeftOpen] = useState(false)
   const [rightOpen, setRightOpen] = useState(false)
   const [authLoading, setAuthLoading] = useState(false)
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // boot the Rust→WASM kernel; everything falls back to the TS port until (unless) it lands
+  useEffect(() => {
+    loadWasmKernel().then(() => setKernel(kernelBackend()))
+  }, [])
 
   useEffect(() => {
     api.setUnauthorizedHandler(() => {
@@ -54,11 +62,11 @@ export default function App() {
   useEffect(() => {
     if (!token) return
     setGraphData(null)
-    api.getGraph(mode).then(d => {
+    api.getGraph().then(d => {
       setGraphData(d)
       setInitialLoad(false)
     }).catch(() => { setInitialLoad(false) })
-  }, [mode, token])
+  }, [token])
 
   useEffect(() => {
     if (profile?.lyricStatus !== 'pending') return
@@ -66,19 +74,24 @@ export default function App() {
       api.getProfile().then(p => {
         setProfile(p)
         if (p.lyricStatus === 'ready') {
-          api.getGraph(mode).then(setGraphData).catch(() => { })
+          api.getGraph().then(setGraphData).catch(() => { })
         }
       }).catch(() => { })
     }, 5000)
     return () => { if (pollRef.current) clearTimeout(pollRef.current) }
-  }, [profile?.lyricStatus, mode])
+  }, [profile?.lyricStatus])
 
+  // friend-request poll: 45s, and only while the tab is actually visible — a parked tab
+  // shouldn't bill Lambda invocations. A refresh fires immediately on tab return.
   useEffect(() => {
     if (!token) return
+    const poll = () => api.getFriendRequests().then(setFriendRequests).catch(() => { })
     const interval = setInterval(() => {
-      api.getFriendRequests().then(setFriendRequests).catch(() => { })
-    }, 20000)
-    return () => clearInterval(interval)
+      if (document.visibilityState === 'visible') poll()
+    }, 45000)
+    const onVisible = () => { if (document.visibilityState === 'visible') poll() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => { clearInterval(interval); document.removeEventListener('visibilitychange', onVisible) }
   }, [token])
 
   const handleLogin = async () => {
@@ -106,7 +119,7 @@ export default function App() {
     try {
       const p = await api.refreshProfile()
       setProfile(p)
-      api.getGraph(mode).then(setGraphData).catch(() => { })
+      api.getGraph().then(setGraphData).catch(() => { })
     } catch { }
     setRefreshing(false)
   }
@@ -114,7 +127,7 @@ export default function App() {
   const handleFriendUpdate = () => {
     api.getFriends().then(setFriends).catch(() => { })
     api.getFriendRequests().then(setFriendRequests).catch(() => { })
-    api.getGraph(mode).then(setGraphData).catch(() => { })
+    api.getGraph().then(setGraphData).catch(() => { })
   }
 
   if (!token) {
@@ -143,11 +156,7 @@ export default function App() {
   return (
     <div className="app">
       <div className="canvas">
-        {token && mode === 'lyric' && profile?.lyricStatus === 'pending' && (
-          <LoadingScreen text="Computing Lyrics..." />
-        )}
-
-        <Graph data={graphData} mode={mode} />
+        <Graph data={graphData} lens={lens} leftPanelOpen={leftOpen} />
 
         {/* ── Left panel toggle (profile) ── */}
         <button
@@ -188,22 +197,26 @@ export default function App() {
           />
         </div>
 
-        {/* ── Mode toggle (bottom centre) ── */}
+        {/* ── Lens tabs (bottom centre): four honest views of the same data, no refetch ── */}
         <div className="hud-bottom">
-          <div className="mode-toggle">
-            <button
-              className={`mode-btn${mode === 'taste' ? ' active' : ''}`}
-              onClick={() => setMode('taste')}
-            >
-              Taste
-            </button>
-            <button
-              className={`mode-btn${mode === 'lyric' ? ' active' : ''}`}
-              onClick={() => setMode('lyric')}
-            >
-              Lyric
-            </button>
+          <div className="lens-tabs">
+            <span className="lens-bracket">[</span>
+            {LENSES.map(l => (
+              <button
+                key={l}
+                className={`lens-btn${lens === l ? ' active' : ''}`}
+                onClick={() => setLens(l)}
+              >
+                {l}
+              </button>
+            ))}
+            <span className="lens-bracket">]</span>
           </div>
+        </div>
+
+        {/* ── Kernel badge (bottom right): which engine computes the geometry ── */}
+        <div className="kernel-badge" title="the engine computing layout + field">
+          kernel · {kernel}
         </div>
       </div>
     </div>
@@ -262,7 +275,7 @@ function BackgroundGraph() {
       {BG_EDGES.map(([a, b, sim]) => {
         const na = nodeMap.get(a), nb = nodeMap.get(b)
         if (!na || !nb) return null
-        const color = sim >= 0.7 ? '#00FF41' : sim >= 0.5 ? '#00CC33' : '#009922'
+        const color = sim >= 0.7 ? '#C9C0AC' : sim >= 0.5 ? '#8A8270' : '#5C564B'
         return (
           <line key={`${a}-${b}`}
             x1={na.x} y1={na.y} x2={nb.x} y2={nb.y}
@@ -275,7 +288,7 @@ function BackgroundGraph() {
       })}
       {BG_NODES.map(n => {
         const pixels = n.big ? BG_LARGE : BG_SMALL
-        const fill = n.big ? '#00FF41' : `rgba(0,255,65,${0.35 + (n.id % 5) * 0.12})`
+        const fill = n.big ? '#ECE4D2' : `rgba(212,205,188,${0.35 + (n.id % 5) * 0.12})`
         return (
           <g key={n.id} transform={`translate(${n.x},${n.y})`}>
             {pixels.map((p, i) => (
@@ -300,7 +313,7 @@ function SpotifyIcon() {
 // Pixel-art person icon — 7×9 grid, 2px pixels
 function ProfilePixelIcon() {
   return (
-    <svg width="14" height="18" viewBox="0 0 7 9" fill="#333" shapeRendering="crispEdges">
+    <svg width="14" height="18" viewBox="0 0 7 9" fill="#C9C0AC" shapeRendering="crispEdges">
       {/* head */}
       <rect x="2" y="0" width="3" height="3" />
       {/* shoulders */}
@@ -317,7 +330,7 @@ function ProfilePixelIcon() {
 // Pixel-art two-people icon — friends
 function FriendsPixelIcon() {
   return (
-    <svg width="22" height="16" viewBox="0 0 11 8" fill="#333" shapeRendering="crispEdges">
+    <svg width="22" height="16" viewBox="0 0 11 8" fill="#C9C0AC" shapeRendering="crispEdges">
       {/* person left */}
       <rect x="0" y="0" width="2" height="2" />
       <rect x="0" y="3" width="4" height="3" />

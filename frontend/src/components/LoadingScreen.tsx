@@ -149,7 +149,7 @@ export default function LoadingScreen({ text }: Props) {
                 fontSize: 11,
                 letterSpacing: 2,
                 marginBottom: 20,
-                color: '#00FF41',
+                color: '#C9A24B',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 2,

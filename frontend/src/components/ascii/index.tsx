@@ -131,9 +131,9 @@ export function Marker({ size = 4, intensity = 1, current = false }: { size?: nu
   return (
     <svg width={span} height={span} viewBox={`${-span / 2} ${-span / 2} ${span} ${span}`} shapeRendering="crispEdges" aria-hidden>
       {PIXELS.map(([x, y], k) => (
-        <rect key={k} x={x * size} y={y * size} width={size} height={size} fill="#00FF41" fillOpacity={op} />
+        <rect key={k} x={x * size} y={y * size} width={size} height={size} fill="#E4DCCB" fillOpacity={op} />
       ))}
-      {current && <rect x={-size / 2} y={-size / 2} width={size} height={size} fill="#000" />}
+      {current && <rect x={-size / 2} y={-size / 2} width={size} height={size} fill="#14130F" />}
     </svg>
   )
 }
