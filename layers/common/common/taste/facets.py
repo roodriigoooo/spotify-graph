@@ -9,12 +9,36 @@ A `UserTasteProfile` is the normalized, distributional object the rest of the sy
 in. It is built once per user (offline / on ingest) from recency-weighted play history.
 """
 import math
+import re
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional
 
 from .linalg import cosine, l2_normalize, clamp
 from .setmetric import wmd_similarity
 from .distributions import DiagGaussian, gaussian_similarity
+
+# Spotify genre tags are hyper-granular compound strings ("indie rock", "latin pop",
+# "deep house"). Exact-string matching is brittle: two listeners of adjacent styles can score
+# 0 just because their tags don't collide character-for-character. We instead compare genre
+# *vocabularies* — each tag contributes both its full string (preserving exact-match credit)
+# and its word tokens, so "art rock" partially meets "indie rock" on `rock`, and "latin pop"
+# meets "pop". Honest (genre families), far less brittle, and it's what makes a real user land
+# near the archetype they actually resemble instead of equidistant from all of them.
+_GENRE_SPLIT = re.compile(r"[\s\-/&,]+")
+
+
+def _genre_tokens(dist: Dict[str, float]) -> Dict[str, float]:
+    tokens: Dict[str, float] = {}
+    for genre, w in dist.items():
+        key = str(genre).lower().strip()
+        if not key or w == 0.0:
+            continue
+        tokens[key] = tokens.get(key, 0.0) + w          # full tag: exact-match credit
+        parts = [p for p in _GENRE_SPLIT.split(key) if p]
+        if len(parts) > 1:                               # + word tokens: family credit
+            for p in parts:
+                tokens[p] = tokens.get(p, 0.0) + w
+    return tokens
 
 
 @dataclass
@@ -80,8 +104,8 @@ def artist_facet(a: UserTasteProfile, b: UserTasteProfile) -> float:
 
 
 def genre_facet(a: UserTasteProfile, b: UserTasteProfile) -> float:
-    """Cosine between recency-weighted genre distributions."""
-    return clamp(_sparse_cosine(a.genre_dist, b.genre_dist))
+    """Cosine between the two genre *vocabularies* (full tags + word tokens; see `_genre_tokens`)."""
+    return clamp(_sparse_cosine(_genre_tokens(a.genre_dist), _genre_tokens(b.genre_dist)))
 
 
 def lyric_facet(a: UserTasteProfile, b: UserTasteProfile, params) -> Optional[float]:

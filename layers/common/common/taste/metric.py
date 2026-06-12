@@ -26,10 +26,14 @@ def score_pair(a: UserTasteProfile, b: UserTasteProfile, params: EngineParams = 
     """
     params = params or EngineParams()
 
-    facets: Dict[str, float] = {
-        "artist": artist_facet(a, b),
-        "genre": genre_facet(a, b),
-    }
+    # Genre shape is the always-on base facet. Artist overlap only applies when *both* sides
+    # actually carry artist data — otherwise weighted-Jaccard would report a misleading 0%
+    # "no overlap" for a profile that simply has no artists (a brand-new user, or a
+    # genre-defined archetype landmark). Dropped facets self-renormalize in `blend`, exactly
+    # like the lyric facet below.
+    facets: Dict[str, float] = {"genre": genre_facet(a, b)}
+    if a.artist_weights and b.artist_weights:
+        facets["artist"] = artist_facet(a, b)
     ly = lyric_facet(a, b, params)
     if ly is not None:
         facets["lyric"] = ly
