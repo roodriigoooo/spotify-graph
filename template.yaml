@@ -260,6 +260,16 @@ Resources:
         DefaultRootObject: index.html
         HttpVersion: http2
         PriceClass: PriceClass_100
+        # Reclaimed from the closed account's zombie distribution via DNS TXT ownership
+        # proof + `aws cloudfront associate-alias`, after the cert below was attached.
+        # Cert is DNS-validated via CNAMEs at name.com (us-east-1 required for CloudFront).
+        Aliases:
+          - overlappingechoes.app
+          - www.overlappingechoes.app
+        ViewerCertificate:
+          AcmCertificateArn: arn:aws:acm:us-east-1:830196002828:certificate/1accabc6-29b9-4509-b5a5-4df8a152174c
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
         Origins:
           - Id: S3StaticWebsite
             DomainName: !GetAtt FrontendBucket.RegionalDomainName
