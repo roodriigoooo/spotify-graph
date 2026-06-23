@@ -8,6 +8,8 @@ distance means dissimilarity — the closer two people sit, the more their liste
 lines up. the edge label is an honest, calibrated "% match", and you can click an edge to see
 *why* you matched.
 
+*unfortunately, the app is under developer mode in the spotify developer platform, and as of april 2025 i cannot qualify to request extended quota/access*
+
 **[try it here](https://overlappingechoes.app)**
 
 ![image](./overlappingechoes.png)
